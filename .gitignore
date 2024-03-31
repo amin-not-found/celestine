@@ -1,0 +1,7 @@
+.project.json
+DESIGN.md
+.vscode
+
+*.ssa
+*.s
+*.out

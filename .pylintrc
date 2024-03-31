@@ -1,0 +1,85 @@
+[MAIN]
+
+
+jobs=1
+load-plugins=
+persistent=yes
+py-version=3.12
+# When enabled, pylint would attempt to guess common misconfiguration and emit
+# user-friendly hints instead of false-positive error messages.
+suggestion-mode=yes
+
+
+[BASIC]
+
+# Naming style matching correct argument names.
+argument-naming-style=snake_case
+attr-naming-style=snake_case
+class-attribute-naming-style=snake_case
+class-const-naming-style=UPPER_CASE
+class-naming-style=PascalCase
+const-naming-style=UPPER_CASE
+function-naming-style=snake_case
+method-naming-style=snake_case
+module-naming-style=snake_case
+variable-naming-style=snake_case
+
+
+[CLASSES]
+# List of valid names for the first argument in a class method.
+valid-classmethod-first-arg=cls,self
+
+
+[DESIGN]
+max-args=5
+max-bool-expr=4
+max-branches=10
+max-locals=15
+max-statements=50
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when caught.
+overgeneral-exceptions=builtins.BaseException,builtins.Exception
+
+
+[FORMAT]
+# Number of spaces of indent required inside a hanging or continued line.
+indent-after-paren=4
+indent-string='    '
+max-line-length=88
+single-line-if-stmt=yes
+
+
+
+
+[MESSAGES CONTROL]
+
+disable=raw-checker-failed,
+        missing-docstring,
+        #bad-inline-option,
+        #locally-disabled,
+        #file-ignored,
+        #suppressed-message,
+        #useless-suppression,
+        #deprecated-pragma,
+        #use-symbolic-message-instead,
+        #use-implicit-booleaness-not-comparison-to-string,
+        #use-implicit-booleaness-not-comparison-to-zero
+
+enable=
+
+
+
+[MISCELLANEOUS]
+# List of note tags to take in consideration, separated by a comma.
+notes=
+
+
+[REFACTORING]
+max-nested-blocks=3
+
+
+[STRING]
+# This flag controls whether inconsistent-quotes generates a warning when the
+# character used as a quote delimiter is used inconsistently within a module.
+check-quote-consistency=yes
