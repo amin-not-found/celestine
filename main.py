@@ -41,6 +41,7 @@ class TokenKind(Enum):
     MINUS = auto()
     ASTERISK = auto()
     SLASH = auto()
+    BANG = auto()
     # One or two character tokens
     # Literals
     IDENTIFIER = auto()
@@ -109,6 +110,7 @@ class Lexer(Iterator):
         "-": TokenKind.MINUS,
         "*": TokenKind.ASTERISK,
         "/": TokenKind.SLASH,
+        "!": TokenKind.BANG,
     }
 
     keywords = {
@@ -277,6 +279,35 @@ class IntLiteral(AST):
         return f"IntLiteral({self.lexeme})"
 
 
+class UnaryOp(AST):
+    def __init__(self, op: TokenKind, expr: "Expr"):
+        self.op = op
+        self.expr = expr
+
+    def __repr__(self) -> str:
+        return f"UnaryOp(op={self.op}, expr={self.expr})"
+
+    def to_ir(self) -> ImmediateResult:
+        expr = self.expr.to_ir()
+        match self.op:
+            case TokenKind.PLUS:
+                return expr
+            case TokenKind.MINUS:
+                new_var = VAR_NAME_GEN()
+                return ImmediateResult(
+                    new_var, expr.ir + f"\n    %{new_var} =l neg %{expr.var}"
+                )
+            case TokenKind.BANG:
+                new_var = VAR_NAME_GEN()
+                return ImmediateResult(
+                    new_var, expr.ir + f"\n    %{new_var} =l ceql %{expr.var}, 0"
+                )
+            case _:
+                raise TypeError(
+                    f"Unary operation not implemented for token of {self.op}"
+                )
+
+
 class BinaryOp(AST):
     arithmetic_instructions = {
         TokenKind.PLUS: "add",
@@ -348,6 +379,12 @@ class Expr(ASTParser):
         token = self.lexer.next()
         return IntLiteral(token.lexeme)
 
+    def parse_unary_op(self):
+        op = self.lexer.next()
+        # More precedence than other operators
+        expr = self.parse(len(self.precedences))
+        return UnaryOp(op.kind, expr)
+
     def parse_group(self):
         self.lexer.next()
         result = self.parse()
@@ -369,6 +406,9 @@ class Expr(ASTParser):
     prefix_parse_functions = {
         TokenKind.INTEGER: parse_integer,
         TokenKind.LEFT_PAREN: parse_group,
+        TokenKind.PLUS: parse_unary_op,
+        TokenKind.MINUS: parse_unary_op,
+        TokenKind.BANG: parse_unary_op,
     }
 
 

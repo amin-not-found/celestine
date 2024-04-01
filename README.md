@@ -47,20 +47,24 @@ As of right now, there's no support other types of comments.
 ### Expressions
 Statements accept expressions and as of right now only 64-bit integers are supported and every expression evaluates to an integer.
 
-#### Arithmetic operations
-You can do these arithmetic operations in an expression using an infix notation:
-|operator|operation       |
-|--------|----------------|
-|`+`     | Addition       |
-|`-`     | Subtraction    |
-|`*`     | Multiplication |
-|`/`     | Division       |
+#### Operators
 
-Also you can group operations with parenthesis. Order of operations is the same as in math.
+You can do these operations in an expression:
+|Operator|Operation         |Precedence
+|--------|------------------|----------
+|`+`     | Positive number  | 1
+|`-`     | Negative number  | 1
+|`!`     | Logical not      | 1
+|`*`     | Multiplication   | 2
+|`/`     | Division         | 2
+|`+`     | Addition         | 3
+|`-`     | Subtraction      | 3
+
+Also you can group operations with parenthesis.
 
 Example:
 ```ts
 // prints 1 as 1+48 is the ASCII code for '1'
-putchar ((2 + 1) * 2) / 3 - 1 + 48;
+putchar ((4 + -1) * 2) / 3 - 1 + 48;
 ```
 

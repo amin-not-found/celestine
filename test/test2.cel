@@ -1,0 +1,9 @@
+function main(): int = {
+    // 48 is the ASCII code of zero
+    // 0 - - !0 + 48 = 0 - -1 + 48 = 0 + 1  + 48 = 1 + 48 = ASCII code for '1'
+    putchar 0 - - !0 + 48;
+    putchar 10; // newline
+    putchar 5 + +3 * -2 / 6 + 48; // should print '4'
+    putchar 10; // newline
+    return 0;
+}
