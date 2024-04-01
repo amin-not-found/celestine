@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from typing import TextIO, Optional, Tuple
+from typing import TextIO, Optional, NamedTuple
 from abc import abstractmethod, ABCMeta
 from collections.abc import Iterator
 
@@ -39,8 +39,8 @@ class TokenKind(Enum):
     ASSIGNMENT = auto()
     PLUS = auto()
     MINUS = auto()
-    MULTIPLY = auto()
-    DIVIDE = auto()
+    ASTERISK = auto()
+    SLASH = auto()
     # One or two character tokens
     # Literals
     IDENTIFIER = auto()
@@ -107,8 +107,8 @@ class Lexer(Iterator):
         "=": TokenKind.ASSIGNMENT,
         "+": TokenKind.PLUS,
         "-": TokenKind.MINUS,
-        "*": TokenKind.MULTIPLY,
-        "/": TokenKind.DIVIDE,
+        "*": TokenKind.ASTERISK,
+        "/": TokenKind.SLASH,
     }
 
     keywords = {
@@ -146,7 +146,7 @@ class Lexer(Iterator):
         kind = self.single_char_tokens.get(c)
 
         # handle two or more character tokens
-        if kind == TokenKind.DIVIDE and self._peek_char() == "/":
+        if kind == TokenKind.SLASH and self._peek_char() == "/":
             # A line comment
             while c and c != "\n":
                 c = self._forward_char()
@@ -240,6 +240,11 @@ class Lexer(Iterator):
         return token
 
 
+class ImmediateResult(NamedTuple):
+    var: Optional[str]
+    ir: str
+
+
 class AST:
     __metaclass__ = ABCMeta  # pylint only works correctly like this
 
@@ -247,9 +252,9 @@ class AST:
     def __repr__(self) -> str: ...
 
     @abstractmethod
-    def to_ir(self) -> tuple[Optional[str], str]:
-        """Returns a tuple of possible variable name
-        for result of expression and the IR"""
+    def to_ir(self) -> ImmediateResult:
+        """Returns a tuple of possible temporary variable name
+        for result of expression and the immediate representation string"""
 
 
 class ASTParser(AST):
@@ -266,7 +271,7 @@ class IntLiteral(AST):
 
     def to_ir(self):
         var_name = VAR_NAME_GEN()
-        return (var_name, f"\n    %{var_name} =l copy {self.lexeme}")
+        return ImmediateResult(var_name, f"\n    %{var_name} =l copy {self.lexeme}")
 
     def __repr__(self) -> str:
         return f"IntLiteral({self.lexeme})"
@@ -276,8 +281,8 @@ class BinaryOp(AST):
     arithmetic_instructions = {
         TokenKind.PLUS: "add",
         TokenKind.MINUS: "sub",
-        TokenKind.MULTIPLY: "mul",
-        TokenKind.DIVIDE: "div",
+        TokenKind.ASTERISK: "mul",
+        TokenKind.SLASH: "div",
     }
 
     def __init__(
@@ -293,13 +298,13 @@ class BinaryOp(AST):
     def __repr__(self):
         return f"BinaryOp(op={self.op}, left={self.left}, right={self.right})"
 
-    def to_ir(self) -> Tuple[str | None]:
-        (left_var, left_ir) = self.left.to_ir()
-        (right_var, right_ir) = self.right.to_ir()
+    def to_ir(self):
+        left: ImmediateResult = self.left.to_ir()
+        right: ImmediateResult = self.right.to_ir()
         self_var = VAR_NAME_GEN()
         instruction = self.arithmetic_instructions.get(self.op)
-        self_ir = f"\n    %{self_var} =l {instruction} %{left_var}, %{right_var}"
-        return (self_var, left_ir + right_ir + self_ir)
+        self_ir = f"\n    %{self_var} =l {instruction} %{left.var}, %{right.var}"
+        return ImmediateResult(self_var, left.ir + right.ir + self_ir)
 
 
 class Expr(ASTParser):
@@ -357,8 +362,8 @@ class Expr(ASTParser):
     precedences = {
         TokenKind.PLUS: 1,
         TokenKind.MINUS: 1,
-        TokenKind.MULTIPLY: 2,
-        TokenKind.DIVIDE: 2,
+        TokenKind.ASTERISK: 2,
+        TokenKind.SLASH: 2,
     }
 
     prefix_parse_functions = {
@@ -392,8 +397,8 @@ class Statement(ASTParser):
             case TokenKind.RETURN:
                 res += f"\n    ret %{var_name}"
             case _:
-                raise TypeError(f"Can't use type {self.kind} as statement type")
-        return (None, res)
+                raise TypeError(f"Can't use token {self.kind} as statement type")
+        return ImmediateResult(None, res)
 
 
 class Function(ASTParser):
@@ -424,11 +429,11 @@ class Function(ASTParser):
         body = "\n    " + "\n    ".join(map(str, self.body))
         return f"Function(name={self.name}, body={body}\n  )\n"
 
-    def to_ir(self) -> tuple[None, str]:
+    def to_ir(self):
         top = f"\nexport function l ${self.name}() {{\n@start"
         bottom = "\n}\n"
         body = "".join(map(lambda x: x.to_ir()[1], self.body))
-        return (None, top + body + bottom)
+        return ImmediateResult(None, top + body + bottom)
 
 
 class Program(ASTParser):
@@ -440,8 +445,8 @@ class Program(ASTParser):
     def __repr__(self) -> str:
         return f"Program({self.main})"
 
-    def to_ir(self) -> tuple[None, str]:
-        return (
+    def to_ir(self):
+        return ImmediateResult(
             None,
             """
 function w $pushchar(l %c) { \n\
