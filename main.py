@@ -13,18 +13,6 @@ from pathlib import Path
 from subprocess import run
 from argparse import ArgumentParser, Namespace
 
-
-class UniqueId:
-    def __init__(self, prefix: str) -> None:
-        self.counter = -1
-        self.prefix = prefix
-
-    def __call__(self) -> str:
-        self.counter += 1
-        return f"{self.prefix}{self.counter}"
-
-
-VAR_NAME_GEN = UniqueId("v")
 DEBUG = True
 
 
@@ -51,6 +39,7 @@ class TokenKind(Enum):
     FUNCTION = auto()
     INT = auto()
     RETURN = auto()
+    LET = auto()
 
 
 @dataclass
@@ -118,6 +107,7 @@ class Lexer(Iterator):
         "function": TokenKind.FUNCTION,
         "int": TokenKind.INT,
         "return": TokenKind.RETURN,
+        "let": TokenKind.LET,
     }
 
     def __init__(self, text: TextIO, path: Optional[PathLike] = None):
@@ -173,6 +163,10 @@ class Lexer(Iterator):
     @property
     def text(self):
         return self._text
+
+    @property
+    def offset(self):
+        return self._position
 
     def _back_char(self):
         """Move back one char"""
@@ -242,6 +236,75 @@ class Lexer(Iterator):
         return token
 
 
+class VariableLevel(Enum):
+    NONE = 0
+    LOCAL = auto()
+    GLOBAL = auto()
+
+
+class Scope:
+    _vars: set[str]
+    _parent: Optional["Scope"]
+    temp_prefix = "v"
+
+    def __init__(self, is_function: bool, parent=None):
+        self._vars = set()
+        self.is_function = is_function
+        self._parent = parent
+        self.temp_count = 0
+
+    @property
+    def is_global(self):
+        return self._parent is None
+
+    def vars(self):
+        return list(self._vars)
+
+    def temp(self) -> str:
+        assert (
+            not self.is_global
+        ), "Global scope can't have temporaries \
+            and didn't find any parent function scope"
+
+        if not self.is_function:
+            return self._parent.temp()
+
+        temp_var = f"{self.temp_prefix}{self.temp_count+1}"
+
+        while temp_var in self._vars:
+            temp_var += "_"
+
+        self.temp_count += 1
+        return temp_var
+
+    def declare_var(self, name: str):
+        self._vars.add(name)
+
+    def var_level(self, name: str):
+        if name in self._vars:
+            if self.is_global:
+                return VariableLevel.GLOBAL
+            return VariableLevel.LOCAL
+
+        if self._parent:
+            return self._parent.var_level(name)
+
+        return VariableLevel.NONE
+
+    def var_signature(self, name: str):
+        var_level = self.var_level(name)
+        match var_level:
+            case VariableLevel.LOCAL:
+                return f"%{name}"
+            case VariableLevel.GLOBAL:
+                return NotImplementedError("Global variables not implemented")
+            case _:
+                raise ValueError(
+                    "Not a local or global variable. \
+                    This should've been caught while parsing. "
+                )
+
+
 class ImmediateResult(NamedTuple):
     var: Optional[str]
     ir: str
@@ -263,16 +326,17 @@ class ASTParser(AST):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self, lexer: Lexer): ...
+    def __init__(self, lexer: Lexer, scope: Scope): ...
 
 
 class IntLiteral(AST):
-    def __init__(self, lexeme: str) -> None:
+    def __init__(self, lexeme: str, scope: Scope) -> None:
         assert lexeme.isdigit()
         self.lexeme = lexeme
+        self.scope = scope
 
     def to_ir(self):
-        var_name = VAR_NAME_GEN()
+        var_name = self.scope.temp()
         return ImmediateResult(var_name, f"\n    %{var_name} =l copy {self.lexeme}")
 
     def __repr__(self) -> str:
@@ -280,9 +344,10 @@ class IntLiteral(AST):
 
 
 class UnaryOp(AST):
-    def __init__(self, op: TokenKind, expr: "Expr"):
+    def __init__(self, op: TokenKind, expr: "Expr", scope: Scope):
         self.op = op
         self.expr = expr
+        self.scope = scope
 
     def __repr__(self) -> str:
         return f"UnaryOp(op={self.op}, expr={self.expr})"
@@ -293,12 +358,12 @@ class UnaryOp(AST):
             case TokenKind.PLUS:
                 return expr
             case TokenKind.MINUS:
-                new_var = VAR_NAME_GEN()
+                new_var = self.scope.temp()
                 return ImmediateResult(
                     new_var, expr.ir + f"\n    %{new_var} =l neg %{expr.var}"
                 )
             case TokenKind.BANG:
-                new_var = VAR_NAME_GEN()
+                new_var = self.scope.temp()
                 return ImmediateResult(
                     new_var, expr.ir + f"\n    %{new_var} =l ceql %{expr.var}, 0"
                 )
@@ -316,31 +381,55 @@ class BinaryOp(AST):
         TokenKind.SLASH: "div",
     }
 
-    def __init__(
-        self,
-        op: TokenKind,
-        left: "Expr",
-        right: "Expr",
-    ):
+    def __init__(self, op: TokenKind, left: "Expr", right: "Expr", scope: Scope):
         self.op = op
         self.left = left
         self.right = right
+        self.scope = scope
 
     def __repr__(self):
         return f"BinaryOp(op={self.op}, left={self.left}, right={self.right})"
 
     def to_ir(self):
+        if self.op == TokenKind.ASSIGNMENT:
+            expr = self.right.to_ir()
+
+            assert isinstance(
+                self.left, Variable
+            ), "Left side of assignment should be an identifier"
+
+            var_signature = self.scope.var_signature(self.left.name)
+
+            return ImmediateResult(
+                expr.var, expr.ir + f"\n    storel %{expr.var}, {var_signature}"
+            )
+
         left: ImmediateResult = self.left.to_ir()
         right: ImmediateResult = self.right.to_ir()
-        self_var = VAR_NAME_GEN()
+        self_var = self.scope.temp()
         instruction = self.arithmetic_instructions.get(self.op)
         self_ir = f"\n    %{self_var} =l {instruction} %{left.var}, %{right.var}"
         return ImmediateResult(self_var, left.ir + right.ir + self_ir)
 
 
+class Variable(AST):
+    def __init__(self, name: str, scope: Scope) -> None:
+        self.name = name
+        self.scope = scope
+
+    def __repr__(self) -> str:
+        return f"Variable(name={self.name})"
+
+    def to_ir(self):
+        temp_var = self.scope.temp()
+        signature = self.scope.var_signature(self.name)
+        return ImmediateResult(temp_var, f"\n    %{temp_var} =l loadl {signature}")
+
+
 class Expr(ASTParser):
-    def __init__(self, lexer: Lexer):
+    def __init__(self, lexer: Lexer, scope: Scope):
         self.lexer = lexer
+        self.scope = scope
         self.child = self.parse()
 
     def __repr__(self) -> str:
@@ -377,13 +466,26 @@ class Expr(ASTParser):
 
     def parse_integer(self):
         token = self.lexer.next()
-        return IntLiteral(token.lexeme)
+        return IntLiteral(token.lexeme, self.scope)
+
+    def parse_variable(self):
+        # TODO : error if uninitialized
+        token = self.lexer.next()
+        name = token.lexeme
+        if self.scope.var_level(name) == VariableLevel.NONE:
+            raise CompilerError(
+                f"Undefined identifier {name}",
+                self.lexer.text,
+                self.lexer.offset,
+                filepath=self.lexer.path,
+            )
+        return Variable(name, self.scope)
 
     def parse_unary_op(self):
         op = self.lexer.next()
         # More precedence than other operators
         expr = self.parse(len(self.precedences))
-        return UnaryOp(op.kind, expr)
+        return UnaryOp(op.kind, expr, self.scope)
 
     def parse_group(self):
         self.lexer.next()
@@ -394,13 +496,21 @@ class Expr(ASTParser):
     def parse_infix(self, op: TokenKind, left):
         self.lexer.next()
         right = self.parse(self.precedences[op])
-        return BinaryOp(op, left, right)
+        if op == TokenKind.ASSIGNMENT and not isinstance(left, Variable):
+            raise CompilerError(
+                "Left side of assignment should be an identifier",
+                self.lexer.text,
+                self.lexer.offset,
+                filepath=self.lexer.path,
+            )
+        return BinaryOp(op, left, right, self.scope)
 
     precedences = {
-        TokenKind.PLUS: 1,
-        TokenKind.MINUS: 1,
-        TokenKind.ASTERISK: 2,
-        TokenKind.SLASH: 2,
+        TokenKind.ASSIGNMENT: 1,
+        TokenKind.PLUS: 2,
+        TokenKind.MINUS: 2,
+        TokenKind.ASTERISK: 3,
+        TokenKind.SLASH: 3,
     }
 
     prefix_parse_functions = {
@@ -409,22 +519,15 @@ class Expr(ASTParser):
         TokenKind.PLUS: parse_unary_op,
         TokenKind.MINUS: parse_unary_op,
         TokenKind.BANG: parse_unary_op,
+        TokenKind.IDENTIFIER: parse_variable,
     }
 
 
-class Statement(ASTParser):
-    def __init__(self, lexer: Lexer):
+class SimpleStatement(ASTParser):
+    def __init__(self, lexer: Lexer, scope: Scope):
         token = lexer.next()
-        if token.kind not in (TokenKind.RETURN, TokenKind.PUTCHAR):
-            raise CompilerError(
-                f"Unexpected token '{token}'.",
-                lexer._text,
-                lexer._position,
-                filepath=lexer.path,
-            )
         self.kind = token.kind
-        self.expr = Expr(lexer)
-        lexer.expect_token(TokenKind.SEMICOLON)
+        self.expr = Expr(lexer, scope)
 
     def __repr__(self) -> str:
         return f"{self.kind.name}({self.expr}),"
@@ -441,11 +544,73 @@ class Statement(ASTParser):
         return ImmediateResult(None, res)
 
 
+class VariableDeclare(ASTParser):
+    def __init__(self, lexer: Lexer, scope: Scope):
+        self.scope = scope
+
+        lexer.expect_token(TokenKind.LET)
+        token = lexer.next()
+        if token.kind != TokenKind.IDENTIFIER:
+            raise CompilerError(
+                "Expected identifier", lexer.text, lexer.offset, filepath=lexer.path
+            )
+        self.name = token.lexeme
+        scope.declare_var(self.name)
+
+        token = lexer.peek()
+        if token.kind != TokenKind.ASSIGNMENT:
+            self.expr = None
+            return
+
+        lexer.next()
+        self.expr = Expr(lexer, scope)
+
+    def __repr__(self) -> str:
+        return f"VariableDeclare(name={self.name}, expr={self.expr}),"
+
+    def to_ir(self):
+        if self.expr is None:
+            return ImmediateResult(None, "")
+        expr = self.expr.to_ir()
+        signature = self.scope.var_signature(self.name)
+        ir = expr.ir + f"\n    storel %{expr.var}, {signature}"
+        return ImmediateResult(None, ir)
+
+
+class Statement(ASTParser):
+    child: Expr | SimpleStatement
+
+    statement_types = {
+        TokenKind.PUTCHAR: SimpleStatement,
+        TokenKind.RETURN: SimpleStatement,
+        TokenKind.LET: VariableDeclare,
+    }
+
+    def __init__(self, lexer: Lexer, scope: Scope):
+        token = lexer.peek()
+        stmt_type = self.statement_types.get(token.kind)
+
+        if not stmt_type:
+            self.child = Expr(lexer, scope)
+        else:
+            self.child = stmt_type(lexer, scope)
+
+        lexer.expect_token(TokenKind.SEMICOLON)
+
+    def __repr__(self) -> str:
+        return str(self.child)
+
+    def to_ir(self):
+        return self.child.to_ir()
+
+
 class Function(ASTParser):
     name: str
     body: list[Statement]
 
-    def __init__(self, lexer: Lexer):
+    def __init__(self, lexer: Lexer, scope: Scope):
+        self.scope = Scope(True, scope)
+
         # For now we only parse a main function that has no arguments
         lexer.expect_token(TokenKind.FUNCTION)
         self.name = lexer.expect_token(TokenKind.IDENTIFIER).lexeme
@@ -459,8 +624,12 @@ class Function(ASTParser):
 
         self.body = []
         while True:
-            self.body.append(Statement(lexer))
-            if self.body[-1].kind == TokenKind.RETURN:
+            stmt = Statement(lexer, self.scope)
+            self.body.append(stmt)
+            if (
+                isinstance(stmt.child, SimpleStatement)
+                and stmt.child.kind == TokenKind.RETURN
+            ):
                 break
 
         lexer.expect_token(TokenKind.RIGHT_BRACE)
@@ -472,15 +641,16 @@ class Function(ASTParser):
     def to_ir(self):
         top = f"\nexport function l ${self.name}() {{\n@start"
         bottom = "\n}\n"
-        body = "".join(map(lambda x: x.to_ir()[1], self.body))
+        body = "".join(f"\n    %{var} =l alloc8 8" for var in self.scope.vars())
+        body += "".join(stmt.to_ir().ir for stmt in self.body)
         return ImmediateResult(None, top + body + bottom)
 
 
 class Program(ASTParser):
     main: Function
 
-    def __init__(self, lexer: Lexer):
-        self.main = Function(lexer)
+    def __init__(self, lexer: Lexer, scope: Scope):
+        self.main = Function(lexer, scope)
 
     def __repr__(self) -> str:
         return f"Program({self.main})"
@@ -496,7 +666,7 @@ function w $pushchar(l %c) { \n\
     %b =w call $write(w 1, l %a, w 1) \n\
     ret %b \n\
 } \n"""
-            + self.main.to_ir()[1],
+            + self.main.to_ir().ir,
         )
 
 
@@ -507,13 +677,14 @@ def compile_file(args: Namespace) -> Path:
     out_file = path.parent.joinpath(f"{path.stem}.out")
 
     lexer = Lexer.lex_file(path)
-    program = Program(lexer)
+    global_scope = Scope(False)
+    program = Program(lexer, global_scope)
 
     if args.print:
         print(program, file=stderr)
 
     with open(ssa_file, "w", encoding="UTF-8") as f:
-        f.write(program.to_ir()[1])
+        f.write(program.to_ir().ir)
 
     run(
         ["qbe", "-o", asm_file, ssa_file],

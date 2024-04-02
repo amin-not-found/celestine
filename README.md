@@ -3,11 +3,18 @@ Celestine is my experimental programming language. I first started with the idea
 
 As of now, this is pretty much the only program supported and only on 64-bit linux:
 ```ts
-// prints "Hi\n"
 function main(): int = {
-    putchar 72;  // H
-    putchar 105; // i
-    putchar 10;  // \n
+    let ascii_zero = 48;
+    let newline = 10;
+    let n = 3;
+    // print "n*2=" 
+    putchar 110; // n
+    putchar 42;  // *
+    putchar 50;  // 2
+    putchar 61;  // =
+    // print value of n*2
+    putchar n * 2 + ascii_zero;
+    putchar newline;
     return 0;
 }
 ```
@@ -39,6 +46,8 @@ Celestine tries to be a low level system programming language that has support f
 A Celestine program consists of a main function which itself is made os statements. Every statement ends with a semicolon(`;`). There are two kinds of statements as of right now:
 1. putchar which prints given a number prints it's corresponding ASCII character. It exists as a way to test the language and will be removed or replaced ved with a function in the future.
 2. return which ends the function returning the given number.
+3. Variable declaration(read about [variables](#variables))
+4. Expression statement 
 
 ### Comments
 Single lined comments are denoted by usage of `//`.
@@ -59,6 +68,7 @@ You can do these operations in an expression:
 |`/`     | Division         | 2
 |`+`     | Addition         | 3
 |`-`     | Subtraction      | 3
+|`=`     | Assignment       | 4
 
 Also you can group operations with parenthesis.
 
@@ -68,3 +78,16 @@ Example:
 putchar ((4 + -1) * 2) / 3 - 1 + 48;
 ```
 
+### Variables
+For now only integers are supported. You can declare variables using `let` keyword and assign to them like other languages:
+```ts
+let x;
+let y = 1;
+x = 42;
+```
+Also it's worth noting that variable assignment is an expression and returns the value assigned to variable. This behavior might change in the future.
+```ts
+let x;
+let y = x = 10;
+putchar y; // prints newline
+```
