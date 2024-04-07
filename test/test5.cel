@@ -1,0 +1,36 @@
+function main(): int = {
+    let z = 48;
+    let lf = 10;
+    putchar (2 < 3)  + z; // 1
+    putchar (2 > 3)  + z; // 0
+    putchar (2 <= 3) + z; // 1
+    putchar (2 >= 3) + z; // 0
+    putchar (2 <= 2) + z; // 1
+    putchar (2 >= 2) + z; // 1
+    putchar lf; // 101011
+
+    putchar (3 == 3) + z; // 1
+    putchar (4 == 5) + z; // 0
+    putchar (6 != 6) + z; // 0
+    putchar (1 != 0) + z; // 1
+    putchar lf; // 1001
+
+    putchar (3 & 3)  + z; // 3
+    putchar (6 & 5)  + z; // 4
+    putchar (2 ^ 2)  + z; // 0
+    putchar (5 ^ 6)  + z; // 3
+    putchar (5 | 6)  + z; // 7 
+    putchar lf; // 34037
+
+    putchar (5 >> 1) + z; // 2
+    putchar (5 >> 2) + z; // 1
+    putchar (3 << 1) + z; // 6
+    putchar (1 << 2) + z; // 4
+    putchar lf; // 2164
+
+    putchar (8 % 3)  + z; // 2
+    putchar (2 & 1 == 0) + z; // 1
+    putchar lf; // 21
+
+    return 0;
+}

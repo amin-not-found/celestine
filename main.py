@@ -24,12 +24,25 @@ class TokenKind(Enum):
     RIGHT_BRACE = auto()
     SEMICOLON = auto()
     COLON = auto()
+    COMMENT = auto()
     ASSIGNMENT = auto()
     PLUS = auto()
     MINUS = auto()
     ASTERISK = auto()
     SLASH = auto()
+    PERCENT = auto()
     BANG = auto()
+    AMPERSAND = auto()
+    V_BAR = auto()
+    CARET = auto()
+    SHIFT_L = auto()
+    SHIFT_R = auto()
+    GT = auto()
+    LT = auto()
+    GE = auto()
+    LE = auto()
+    EQ = auto()
+    NE = auto()
     # One or two character tokens
     # Literals
     IDENTIFIER = auto()
@@ -99,7 +112,27 @@ class Lexer(Iterator):
         "-": TokenKind.MINUS,
         "*": TokenKind.ASTERISK,
         "/": TokenKind.SLASH,
+        "%": TokenKind.PERCENT,
         "!": TokenKind.BANG,
+        "&": TokenKind.AMPERSAND,
+        "|": TokenKind.V_BAR,
+        "^": TokenKind.CARET,
+        "<": TokenKind.LT,
+        ">": TokenKind.GT,
+    }
+
+    two_char_tokens: dict[TokenKind, dict[str, TokenKind]] = {
+        TokenKind.SLASH: {"/": TokenKind.COMMENT},
+        TokenKind.ASSIGNMENT: {"=": TokenKind.EQ},
+        TokenKind.BANG: {"=": TokenKind.NE},
+        TokenKind.LT: {
+            "=": TokenKind.LE,
+            "<": TokenKind.SHIFT_L,
+        },
+        TokenKind.GT: {
+            "=": TokenKind.GE,
+            ">": TokenKind.SHIFT_R,
+        },
     }
 
     keywords = {
@@ -138,13 +171,20 @@ class Lexer(Iterator):
         kind = self.single_char_tokens.get(c)
 
         # handle two or more character tokens
-        if kind == TokenKind.SLASH and self._peek_char() == "/":
+        two_char_candids = self.two_char_tokens.get(kind)
+        if two_char_candids is not None:
+            new_kind = two_char_candids.get(self._peek_char())
+            if new_kind is not None:
+                kind = new_kind
+                self._forward_char()
+
+        if kind == TokenKind.COMMENT:
             # A line comment
             while c and c != "\n":
                 c = self._forward_char()
             return self.next()
 
-        if not kind:
+        if kind is None:
             self._back_char()
             if c.isdigit():
                 return self.parse_int()
@@ -374,11 +414,23 @@ class UnaryOp(AST):
 
 
 class BinaryOp(AST):
-    arithmetic_instructions = {
+    instructions = {
         TokenKind.PLUS: "add",
         TokenKind.MINUS: "sub",
         TokenKind.ASTERISK: "mul",
         TokenKind.SLASH: "div",
+        TokenKind.PERCENT: "rem",
+        TokenKind.AMPERSAND: "and",
+        TokenKind.CARET: "xor",
+        TokenKind.V_BAR: "or",
+        TokenKind.SHIFT_L: "shl",
+        TokenKind.SHIFT_R: "sar",
+        TokenKind.LT: "csltl",
+        TokenKind.GT: "csgtl",
+        TokenKind.LE: "cslel",
+        TokenKind.GE: "csgel",
+        TokenKind.EQ: "ceql",
+        TokenKind.NE: "cnel",
     }
 
     def __init__(self, op: TokenKind, left: "Expr", right: "Expr", scope: Scope):
@@ -407,7 +459,7 @@ class BinaryOp(AST):
         left: ImmediateResult = self.left.to_ir()
         right: ImmediateResult = self.right.to_ir()
         self_var = self.scope.temp()
-        instruction = self.arithmetic_instructions.get(self.op)
+        instruction = self.instructions.get(self.op)
         self_ir = f"\n    %{self_var} =l {instruction} %{left.var}, %{right.var}"
         return ImmediateResult(self_var, left.ir + right.ir + self_ir)
 
@@ -507,10 +559,22 @@ class Expr(ASTParser):
 
     precedences = {
         TokenKind.ASSIGNMENT: 1,
-        TokenKind.PLUS: 2,
-        TokenKind.MINUS: 2,
-        TokenKind.ASTERISK: 3,
-        TokenKind.SLASH: 3,
+        TokenKind.LT: 2,
+        TokenKind.GT: 2,
+        TokenKind.LE: 2,
+        TokenKind.GE: 2,
+        TokenKind.EQ: 2,
+        TokenKind.NE: 2,
+        TokenKind.V_BAR: 3,
+        TokenKind.CARET: 4,
+        TokenKind.AMPERSAND: 5,
+        TokenKind.SHIFT_L: 6,
+        TokenKind.SHIFT_R: 6,
+        TokenKind.PLUS: 7,
+        TokenKind.MINUS: 7,
+        TokenKind.ASTERISK: 8,
+        TokenKind.SLASH: 8,
+        TokenKind.PERCENT: 8,
     }
 
     prefix_parse_functions = {

@@ -61,14 +61,16 @@ Statements accept expressions and as of right now only 64-bit integers are suppo
 You can do these operations in an expression:
 |Operator|Operation         |Precedence
 |--------|------------------|----------
-|`+`     | Positive number  | 1
-|`-`     | Negative number  | 1
-|`!`     | Logical not      | 1
-|`*`     | Multiplication   | 2
-|`/`     | Division         | 2
-|`+`     | Addition         | 3
-|`-`     | Subtraction      | 3
-|`=`     | Assignment       | 4
+|`+`, `-`     | Positive/negative number                | 1
+|`!`     | Logical not                                  | 1
+|`*`, `/`, `%`| Multiplication, division, and remainder | 2
+|`+`, `-`     | Addition and subtraction                | 3
+|`<<`, `>>`   | Bitwise left and right shift            | 4
+|`&`          | Bitwise AND                             | 5
+|`^`          | Bitwise XOR                             | 6
+|`\|`         | Bitwise OR                              | 7
+|`==`, `!=`, `<`, `>`, `<=`, `>=`| Comparison           | 8
+|`=`          | Assignment                              | 9
 
 Also you can group operations with parenthesis.
 
