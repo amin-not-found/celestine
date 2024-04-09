@@ -59,8 +59,8 @@ Statements accept expressions and as of right now only 64-bit integers are suppo
 #### Operators
 
 You can do these operations in an expression:
-|Operator|Operation         |Precedence
-|--------|------------------|----------
+|Operator|Operation                                     |Precedence
+|--------|----------------------------------------------|----------
 |`+`, `-`     | Positive/negative number                | 1
 |`!`     | Logical not                                  | 1
 |`*`, `/`, `%`| Multiplication, division, and remainder | 2
@@ -70,7 +70,9 @@ You can do these operations in an expression:
 |`^`          | Bitwise XOR                             | 6
 |`\|`         | Bitwise OR                              | 7
 |`==`, `!=`, `<`, `>`, `<=`, `>=`| Comparison           | 8
-|`=`          | Assignment                              | 9
+|`\|\|`       | Logical AND                             | 9
+|`&&`         | Logical OR                              | 10  
+|`=`          | Assignment                              | 11
 
 Also you can group operations with parenthesis.
 

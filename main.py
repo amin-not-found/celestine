@@ -16,6 +16,16 @@ from argparse import ArgumentParser, Namespace
 DEBUG = True
 
 
+class IncrementalGen:
+    def __init__(self, prefix: str) -> None:
+        self.counter = -1
+        self.prefix = prefix
+
+    def __call__(self) -> str:
+        self.counter += 1
+        return f"{self.prefix}{self.counter}"
+
+
 class TokenKind(Enum):
     # Single-character tokens
     LEFT_PAREN = auto()
@@ -35,6 +45,8 @@ class TokenKind(Enum):
     AMPERSAND = auto()
     V_BAR = auto()
     CARET = auto()
+    L_AND = auto()
+    L_OR = auto()
     SHIFT_L = auto()
     SHIFT_R = auto()
     GT = auto()
@@ -133,6 +145,8 @@ class Lexer(Iterator):
             "=": TokenKind.GE,
             ">": TokenKind.SHIFT_R,
         },
+        TokenKind.AMPERSAND: {"&": TokenKind.L_AND},
+        TokenKind.V_BAR: {"|": TokenKind.L_OR},
     }
 
     keywords = {
@@ -281,48 +295,64 @@ class VariableLevel(Enum):
     LOCAL = auto()
     GLOBAL = auto()
 
+class ScopeType(Enum):
+    GLOBAL = auto()
+    FUNC = auto()
+    BLOCK = auto()
+
 
 class Scope:
     _vars: set[str]
     _parent: Optional["Scope"]
-    temp_prefix = "v"
+    _temp_gen: IncrementalGen
+    _label_gen: IncrementalGen
+    _kind: ScopeType
 
-    def __init__(self, is_function: bool, parent=None):
+    def __init__(self, kind: ScopeType, parent=None):
+        if kind != ScopeType.GLOBAL and parent is None:
+            raise RuntimeError("Non global scopes should have a parent")
+
         self._vars = set()
-        self.is_function = is_function
+        self._kind = kind
         self._parent = parent
-        self.temp_count = 0
-
-    @property
-    def is_global(self):
-        return self._parent is None
+        self._temp_gen = IncrementalGen("v")
+        self._label_gen = IncrementalGen("L")
 
     def vars(self):
         return list(self._vars)
 
     def temp(self) -> str:
         assert (
-            not self.is_global
+            self._kind != ScopeType.GLOBAL
         ), "Global scope can't have temporaries \
-            and didn't find any parent function scope"
+            and couldn't find any parent function scope"
 
-        if not self.is_function:
+        if not self._kind == ScopeType.FUNC:
             return self._parent.temp()
 
-        temp_var = f"{self.temp_prefix}{self.temp_count+1}"
+        temp_var = self._temp_gen()
 
         while temp_var in self._vars:
             temp_var += "_"
-
-        self.temp_count += 1
         return temp_var
+
+    def label(self) -> str:
+        assert (
+            self._kind != ScopeType.GLOBAL
+        ), "Global scope can't have block labels \
+            and couldn't find any parent function scope"
+
+        if not self._kind == ScopeType.FUNC:
+            return self._parent.label()
+
+        return self._label_gen()
 
     def declare_var(self, name: str):
         self._vars.add(name)
 
     def var_level(self, name: str):
         if name in self._vars:
-            if self.is_global:
+            if self._kind == ScopeType.GLOBAL:
                 return VariableLevel.GLOBAL
             return VariableLevel.LOCAL
 
@@ -442,19 +472,49 @@ class BinaryOp(AST):
     def __repr__(self):
         return f"BinaryOp(op={self.op}, left={self.left}, right={self.right})"
 
+    def assignment_ir(self):
+        expr = self.right.to_ir()
+
+        assert isinstance(
+            self.left, Variable
+        ), "Left side of assignment should be an identifier"
+
+        var_signature = self.scope.var_signature(self.left.name)
+
+        return ImmediateResult(
+            expr.var, expr.ir + f"\n    storel %{expr.var}, {var_signature}"
+        )
+
+    def logical_connective_ir(self):
+        left: ImmediateResult = self.left.to_ir()
+        right: ImmediateResult = self.right.to_ir()
+        result_var = self.scope.temp()
+        resume_label = self.scope.label()
+        end_label = self.scope.label()
+
+        match self.op:
+            case TokenKind.L_AND:
+                jmp = f"jnz %{left.var}, @{resume_label}, @{end_label}"
+            case TokenKind.L_OR:
+                jmp = f"jnz %{left.var}, @{end_label}, @{resume_label}"
+            case _:
+                raise ValueError(f"logical op {self.op} not supported")
+
+        ir = f"""{left.ir}
+    %{result_var} =l copy %{left.var}
+    {jmp}
+@{resume_label}{right.ir}
+    %{result_var} =l copy %{right.var}
+@{end_label}"""
+        return ImmediateResult(result_var, ir)
+
+
     def to_ir(self):
-        if self.op == TokenKind.ASSIGNMENT:
-            expr = self.right.to_ir()
-
-            assert isinstance(
-                self.left, Variable
-            ), "Left side of assignment should be an identifier"
-
-            var_signature = self.scope.var_signature(self.left.name)
-
-            return ImmediateResult(
-                expr.var, expr.ir + f"\n    storel %{expr.var}, {var_signature}"
-            )
+        match self.op:
+            case TokenKind.ASSIGNMENT:
+                return self.assignment_ir()
+            case TokenKind.L_AND | TokenKind.L_OR:
+                return self.logical_connective_ir()
 
         left: ImmediateResult = self.left.to_ir()
         right: ImmediateResult = self.right.to_ir()
@@ -559,22 +619,24 @@ class Expr(ASTParser):
 
     precedences = {
         TokenKind.ASSIGNMENT: 1,
-        TokenKind.LT: 2,
-        TokenKind.GT: 2,
-        TokenKind.LE: 2,
-        TokenKind.GE: 2,
-        TokenKind.EQ: 2,
-        TokenKind.NE: 2,
-        TokenKind.V_BAR: 3,
-        TokenKind.CARET: 4,
-        TokenKind.AMPERSAND: 5,
-        TokenKind.SHIFT_L: 6,
-        TokenKind.SHIFT_R: 6,
-        TokenKind.PLUS: 7,
-        TokenKind.MINUS: 7,
-        TokenKind.ASTERISK: 8,
-        TokenKind.SLASH: 8,
-        TokenKind.PERCENT: 8,
+        TokenKind.L_OR: 2,
+        TokenKind.L_AND: 3,
+        TokenKind.LT: 4,
+        TokenKind.GT: 4,
+        TokenKind.LE: 4,
+        TokenKind.GE: 4,
+        TokenKind.EQ: 4,
+        TokenKind.NE: 4,
+        TokenKind.V_BAR: 5,
+        TokenKind.CARET: 6,
+        TokenKind.AMPERSAND: 7,
+        TokenKind.SHIFT_L: 8,
+        TokenKind.SHIFT_R: 8,
+        TokenKind.PLUS: 9,
+        TokenKind.MINUS: 9,
+        TokenKind.ASTERISK: 10,
+        TokenKind.SLASH: 10,
+        TokenKind.PERCENT: 10,
     }
 
     prefix_parse_functions = {
@@ -673,7 +735,7 @@ class Function(ASTParser):
     body: list[Statement]
 
     def __init__(self, lexer: Lexer, scope: Scope):
-        self.scope = Scope(True, scope)
+        self.scope = Scope(ScopeType.FUNC, scope)
 
         # For now we only parse a main function that has no arguments
         lexer.expect_token(TokenKind.FUNCTION)
@@ -741,7 +803,7 @@ def compile_file(args: Namespace) -> Path:
     out_file = path.parent.joinpath(f"{path.stem}.out")
 
     lexer = Lexer.lex_file(path)
-    global_scope = Scope(False)
+    global_scope = Scope(ScopeType.GLOBAL)
     program = Program(lexer, global_scope)
 
     if args.print:
