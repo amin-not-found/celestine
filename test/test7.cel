@@ -1,0 +1,35 @@
+function main(): int = {
+    let z = 48;
+    let q_mark = 63;
+    let x;
+    
+    // TODO : replace with loop
+    x = 2;
+    if x == 0 {
+        putchar 0+z;
+    } else if x == 1 {
+        putchar 1+z;
+    } else {
+        putchar q_mark;
+    } // "?"
+
+    x = 1;
+    x = if x == 0 {
+            putchar 0+z;
+        } else if x == 1 {
+            putchar 1+z;
+        } else {
+            putchar q_mark;
+        }; // "1", also assigns zero to x
+
+    if x == 0 {
+        putchar 0+z;
+    } else if x == 1 {
+        putchar 1+z;
+    } else {
+        putchar q_mark;
+    } // "?"
+
+    putchar 10;
+    return 0;
+}

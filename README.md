@@ -81,6 +81,22 @@ Example:
 // prints 1 as 1+48 is the ASCII code for '1'
 putchar ((4 + -1) * 2) / 3 - 1 + 48;
 ```
+#### If Expression/Statement
+Conditional execution of code is possible with `if`, `else if` and `else`. These keywords followed by a code block can be used both as expressions and statements. For now all if expressions return 0 but this will change in the future. Example:
+```ts
+if x % 2 == 0 {
+    // Print "Even"
+    putchar 69;
+    putchar 118;
+    putchar 101;
+    putchar 110;
+} else {
+    // Print "Odd"
+    putchar 79;
+    putchar 100;
+    putchar 100;
+}
+```
 
 ### Variables
 For now only integers are supported. You can declare variables using `let` keyword and assign to them like other languages:

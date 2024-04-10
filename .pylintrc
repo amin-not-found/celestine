@@ -56,6 +56,7 @@ single-line-if-stmt=yes
 
 disable=raw-checker-failed,
         missing-docstring,
+        raise-missing-from,
         #bad-inline-option,
         #locally-disabled,
         #file-ignored,

@@ -65,6 +65,8 @@ class TokenKind(Enum):
     INT = auto()
     RETURN = auto()
     LET = auto()
+    IF = auto()
+    ELSE = auto()
 
 
 @dataclass
@@ -155,6 +157,8 @@ class Lexer(Iterator):
         "int": TokenKind.INT,
         "return": TokenKind.RETURN,
         "let": TokenKind.LET,
+        "if": TokenKind.IF,
+        "else": TokenKind.ELSE,
     }
 
     def __init__(self, text: TextIO, path: Optional[PathLike] = None):
@@ -290,36 +294,50 @@ class Lexer(Iterator):
         return token
 
 
-class VariableLevel(Enum):
-    NONE = 0
-    LOCAL = auto()
-    GLOBAL = auto()
-
 class ScopeType(Enum):
     GLOBAL = auto()
     FUNC = auto()
     BLOCK = auto()
 
 
-class Scope:
-    _vars: set[str]
-    _parent: Optional["Scope"]
-    _temp_gen: IncrementalGen
-    _label_gen: IncrementalGen
-    _kind: ScopeType
+class VariableRedeclareError(Exception):
+    pass
 
-    def __init__(self, kind: ScopeType, parent=None):
+
+class VariableState(NamedTuple):
+    address: str
+    level: ScopeType
+
+
+class Scope:
+    _vars: dict[str, VariableState]
+
+    def __init__(self, kind: ScopeType, parent=Optional["Scope"]):
         if kind != ScopeType.GLOBAL and parent is None:
             raise RuntimeError("Non global scopes should have a parent")
 
-        self._vars = set()
+        self._vars = dict()
         self._kind = kind
         self._parent = parent
-        self._temp_gen = IncrementalGen("v")
+        self._var_gen = IncrementalGen("V")
+        self._temp_gen = IncrementalGen("t")
         self._label_gen = IncrementalGen("L")
 
+    def __repr__(self) -> str:
+        if self._kind == ScopeType.GLOBAL:
+            return "GLOBAL"
+        return f"{self._kind}<{self._parent}>"
+
+    @property
+    def kind(self):
+        return self._kind
+
+    @property
+    def parent(self):
+        return self._parent
+
     def vars(self):
-        return list(self._vars)
+        return self._vars.items()
 
     def temp(self) -> str:
         assert (
@@ -330,11 +348,7 @@ class Scope:
         if not self._kind == ScopeType.FUNC:
             return self._parent.temp()
 
-        temp_var = self._temp_gen()
-
-        while temp_var in self._vars:
-            temp_var += "_"
-        return temp_var
+        return self._temp_gen()
 
     def label(self) -> str:
         assert (
@@ -347,26 +361,43 @@ class Scope:
 
         return self._label_gen()
 
+    def _var(self):
+        assert (
+            self._kind != ScopeType.GLOBAL
+        ), "Non-existent or global(not supported yet) variable"
+
+        match self._kind:
+            case ScopeType.GLOBAL:
+                raise ValueError("Non-existent or global(not supported yet) variable")
+            case ScopeType.FUNC:
+                return self._var_gen()
+            case ScopeType.BLOCK:
+                return self._parent._var()  # pylint: disable=protected-access
+            case _:
+                raise ValueError("Unreachable")
+
     def declare_var(self, name: str):
-        self._vars.add(name)
-
-    def var_level(self, name: str):
         if name in self._vars:
-            if self._kind == ScopeType.GLOBAL:
-                return VariableLevel.GLOBAL
-            return VariableLevel.LOCAL
+            raise VariableRedeclareError()
+        self._vars[name] = VariableState(self._var(), self._kind)
 
-        if self._parent:
-            return self._parent.var_level(name)
+    def var_state(self, name: str) -> Optional[VariableState]:
+        state = self._vars.get(name)
 
-        return VariableLevel.NONE
+        if state is not None:
+            return state
+
+        if self._parent is not None:
+            return self._parent.var_state(name)
+
+        return None
 
     def var_signature(self, name: str):
-        var_level = self.var_level(name)
-        match var_level:
-            case VariableLevel.LOCAL:
-                return f"%{name}"
-            case VariableLevel.GLOBAL:
+        var = self.var_state(name)
+        match var.level:
+            case ScopeType.FUNC | ScopeType.BLOCK:
+                return f"%{var.address}"
+            case ScopeType.GLOBAL:
                 return NotImplementedError("Global variables not implemented")
             case _:
                 raise ValueError(
@@ -508,7 +539,6 @@ class BinaryOp(AST):
 @{end_label}"""
         return ImmediateResult(result_var, ir)
 
-
     def to_ir(self):
         match self.op:
             case TokenKind.ASSIGNMENT:
@@ -522,6 +552,86 @@ class BinaryOp(AST):
         instruction = self.instructions.get(self.op)
         self_ir = f"\n    %{self_var} =l {instruction} %{left.var}, %{right.var}"
         return ImmediateResult(self_var, left.ir + right.ir + self_ir)
+
+
+@dataclass
+class IfArm:
+    cond: "Expr"
+    body: "Block"
+    if_label: Optional[str]
+    start_label: Optional[str]
+    else_label: Optional[str]
+
+
+class IfExpr(ASTParser):
+    arms: list[IfArm]
+
+    def __init__(self, lexer: Lexer, scope: Scope):
+        self.scope = Scope(ScopeType.BLOCK, scope)
+
+        self.arms = []
+
+        while True:
+            lexer.expect_token(TokenKind.IF)
+            expr = Expr(lexer, self.scope)
+            body = Block(lexer, self.scope)
+            self.arms.append(IfArm(expr, body, None, None, None))
+
+            if lexer.peek().kind != TokenKind.ELSE:
+                return
+
+            lexer.next()
+
+            if lexer.peek().kind != TokenKind.IF:
+                # Final else clause
+                self.arms.append(
+                    IfArm(None, Block(lexer, self.scope), None, None, None)
+                )
+                return
+
+    def __repr__(self) -> str:
+        res = [""]
+        for arm in self.arms:
+            res.append(f"({arm.cond}, {arm.body})")
+        res = "\n        ".join(res)
+        return f"IfExpr({res})"
+
+    def to_ir(self):
+        assert len(self.arms) > 0
+
+        end_label = self.scope.label()
+
+        else_label = self.scope.label()
+        for arm in self.arms:
+            arm.if_label = else_label
+            arm.start_label = self.scope.label()
+            arm.else_label = self.scope.label()
+            else_label = arm.else_label
+
+        ir = []
+
+        # arms: list[tuple[Optional[Expr], Block, str,str,str]] = []
+        for arm in self.arms:
+            ir.append(f"\n@{arm.if_label}")
+
+            if arm.cond is None:
+                # Else clause is the only arm without cond
+                ir.append(arm.body.to_ir().ir)
+                break
+
+            cond = arm.cond.to_ir()
+            ir.append(cond.ir)
+            ir.append(f"\n    jnz %{cond.var}, @{arm.start_label}, @{arm.else_label}")
+            ir.append(f"\n@{arm.start_label}")
+            ir.append(arm.body.to_ir().ir)
+            ir.append(f"\n    jmp @{end_label}")
+
+        ir.append(f"\n@{end_label}")
+        res_var = self.scope.temp()
+        ir.append(f"\n    %{res_var} =l copy 0")
+        res_ir = "".join(ir)
+
+        return ImmediateResult(res_var, res_ir)
 
 
 class Variable(AST):
@@ -584,7 +694,7 @@ class Expr(ASTParser):
         # TODO : error if uninitialized
         token = self.lexer.next()
         name = token.lexeme
-        if self.scope.var_level(name) == VariableLevel.NONE:
+        if self.scope.var_state(name) is None:
             raise CompilerError(
                 f"Undefined identifier {name}",
                 self.lexer.text,
@@ -604,6 +714,9 @@ class Expr(ASTParser):
         result = self.parse()
         self.lexer.expect_token(TokenKind.RIGHT_PAREN)
         return result
+
+    def parse_if(self):
+        return IfExpr(self.lexer, self.scope)
 
     def parse_infix(self, op: TokenKind, left):
         self.lexer.next()
@@ -646,6 +759,7 @@ class Expr(ASTParser):
         TokenKind.MINUS: parse_unary_op,
         TokenKind.BANG: parse_unary_op,
         TokenKind.IDENTIFIER: parse_variable,
+        TokenKind.IF: parse_if,
     }
 
 
@@ -681,7 +795,16 @@ class VariableDeclare(ASTParser):
                 "Expected identifier", lexer.text, lexer.offset, filepath=lexer.path
             )
         self.name = token.lexeme
-        scope.declare_var(self.name)
+
+        try:
+            scope.declare_var(self.name)
+        except VariableRedeclareError as _:
+            raise CompilerError(
+                f"Redefining variable {self.name}",
+                lexer.text,
+                token.offset,
+                filepath=lexer.path,
+            )
 
         token = lexer.peek()
         if token.kind != TokenKind.ASSIGNMENT:
@@ -703,6 +826,41 @@ class VariableDeclare(ASTParser):
         return ImmediateResult(None, ir)
 
 
+class Block(ASTParser):
+    def __init__(self, lexer: Lexer, scope: Scope):
+        """Note: Constructor uses given scope as block scope
+        and doesn't generate a new scope"""
+        self.scope = scope
+        self.body = []
+
+        if (
+            self.scope.kind == ScopeType.BLOCK
+            and self.scope.parent.kind == ScopeType.GLOBAL
+        ):
+            raise CompilerError(
+                "Can't have code blocks inside global scope",
+                lexer.text,
+                lexer.offset,
+                filepath=lexer.path,
+            )
+
+        lexer.expect_token(TokenKind.LEFT_BRACE)
+        while lexer.peek().kind != TokenKind.RIGHT_BRACE:
+            self.body.append(Statement(lexer, self.scope))
+        lexer.expect_token(TokenKind.RIGHT_BRACE)
+
+    def __repr__(self) -> str:
+        return "\n    " + "\n    ".join(map(str, self.body))
+
+    def to_ir(self):
+        body = []
+        body = "".join(
+            f"\n    %{var.address} =l alloc8 8" for _, var in self.scope.vars()
+        )
+        body += "".join(stmt.to_ir().ir for stmt in self.body)
+        return ImmediateResult(None, body)
+
+
 class Statement(ASTParser):
     child: Expr | SimpleStatement
 
@@ -711,6 +869,8 @@ class Statement(ASTParser):
         TokenKind.RETURN: SimpleStatement,
         TokenKind.LET: VariableDeclare,
     }
+
+    statement_exprs = (IfExpr,)
 
     def __init__(self, lexer: Lexer, scope: Scope):
         token = lexer.peek()
@@ -721,7 +881,11 @@ class Statement(ASTParser):
         else:
             self.child = stmt_type(lexer, scope)
 
-        lexer.expect_token(TokenKind.SEMICOLON)
+        if not (
+            isinstance(self.child, Expr)
+            and isinstance(self.child.child, self.statement_exprs)
+        ):
+            lexer.expect_token(TokenKind.SEMICOLON)
 
     def __repr__(self) -> str:
         return str(self.child)
@@ -732,7 +896,6 @@ class Statement(ASTParser):
 
 class Function(ASTParser):
     name: str
-    body: list[Statement]
 
     def __init__(self, lexer: Lexer, scope: Scope):
         self.scope = Scope(ScopeType.FUNC, scope)
@@ -746,30 +909,16 @@ class Function(ASTParser):
         lexer.expect_token(TokenKind.COLON)
         lexer.expect_token(TokenKind.INT)
         lexer.expect_token(TokenKind.ASSIGNMENT)
-        lexer.expect_token(TokenKind.LEFT_BRACE)
 
-        self.body = []
-        while True:
-            stmt = Statement(lexer, self.scope)
-            self.body.append(stmt)
-            if (
-                isinstance(stmt.child, SimpleStatement)
-                and stmt.child.kind == TokenKind.RETURN
-            ):
-                break
-
-        lexer.expect_token(TokenKind.RIGHT_BRACE)
+        self.body = Block(lexer, self.scope)
 
     def __repr__(self) -> str:
-        body = "\n    " + "\n    ".join(map(str, self.body))
-        return f"Function(name={self.name}, body={body}\n  )\n"
+        return f"Function(name={self.name}, body={self.body}\n  )\n"
 
     def to_ir(self):
         top = f"\nexport function l ${self.name}() {{\n@start"
         bottom = "\n}\n"
-        body = "".join(f"\n    %{var} =l alloc8 8" for var in self.scope.vars())
-        body += "".join(stmt.to_ir().ir for stmt in self.body)
-        return ImmediateResult(None, top + body + bottom)
+        return ImmediateResult(None, top + self.body.to_ir().ir + bottom)
 
 
 class Program(ASTParser):
