@@ -67,6 +67,7 @@ class TokenKind(Enum):
     LET = auto()
     IF = auto()
     ELSE = auto()
+    WHILE = auto()
 
 
 @dataclass
@@ -159,6 +160,7 @@ class Lexer(Iterator):
         "let": TokenKind.LET,
         "if": TokenKind.IF,
         "else": TokenKind.ELSE,
+        "while": TokenKind.WHILE,
     }
 
     def __init__(self, text: TextIO, path: Optional[PathLike] = None):
@@ -573,7 +575,7 @@ class IfExpr(ASTParser):
 
         while True:
             lexer.expect_token(TokenKind.IF)
-            expr = Expr(lexer, self.scope)
+            expr = Expr(lexer, scope)
             body = Block(lexer, self.scope)
             self.arms.append(IfArm(expr, body, None, None, None))
 
@@ -632,6 +634,33 @@ class IfExpr(ASTParser):
         res_ir = "".join(ir)
 
         return ImmediateResult(res_var, res_ir)
+
+
+class WhileExpr(ASTParser):
+    def __init__(self, lexer: Lexer, scope: Scope):
+        self.scope = Scope(ScopeType.BLOCK, scope)
+
+        lexer.expect_token(TokenKind.WHILE)
+        self.cond = Expr(lexer, scope)
+        self.body = Block(lexer, self.scope)
+
+    def __repr__(self) -> str:
+        return f"WhileExpr({self.cond}, {self.body})"
+
+    def to_ir(self) -> ImmediateResult:
+        cond = self.cond.to_ir()
+        while_label = self.scope.label()
+        start_label = self.scope.label()
+        end_label = self.scope.label()
+        res_var = self.scope.temp()
+        ir = f"""
+@{while_label}{cond.ir}
+    jnz %{cond.var}, @{start_label}, @{end_label}
+@{start_label}{self.body.to_ir().ir}
+    jmp @{while_label}
+@{end_label}
+    %{res_var} =l copy 0"""
+        return ImmediateResult(res_var, ir)
 
 
 class Variable(AST):
@@ -718,6 +747,9 @@ class Expr(ASTParser):
     def parse_if(self):
         return IfExpr(self.lexer, self.scope)
 
+    def parse_while(self):
+        return WhileExpr(self.lexer, self.scope)
+
     def parse_infix(self, op: TokenKind, left):
         self.lexer.next()
         right = self.parse(self.precedences[op])
@@ -760,6 +792,7 @@ class Expr(ASTParser):
         TokenKind.BANG: parse_unary_op,
         TokenKind.IDENTIFIER: parse_variable,
         TokenKind.IF: parse_if,
+        TokenKind.WHILE: parse_while,
     }
 
 
@@ -870,7 +903,10 @@ class Statement(ASTParser):
         TokenKind.LET: VariableDeclare,
     }
 
-    statement_exprs = (IfExpr,)
+    statement_exprs = (
+        IfExpr,
+        WhileExpr,
+    )
 
     def __init__(self, lexer: Lexer, scope: Scope):
         token = lexer.peek()

@@ -97,7 +97,28 @@ if x % 2 == 0 {
     putchar 100;
 }
 ```
+#### Loops
+Only while loop is supported at the moment. Example:
+```ts
+// prints a pyramid pattern
+function main(): int = {
+    let rows = 5;
+    let star = 42;
+    let newline = 10;
 
+    let i = 1;
+    while i <= rows {
+        let j = 0;
+        while j < i {
+            putchar star;
+            j = j + 1;
+        }
+        putchar newline;
+        i = i + 1;
+    }
+    return 0;
+}
+```
 ### Variables
 For now only integers are supported. You can declare variables using `let` keyword and assign to them like other languages:
 ```ts

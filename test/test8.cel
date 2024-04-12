@@ -1,0 +1,25 @@
+function main(): int = {
+    // an inefficient program to print a number digit by digit
+    let n = 123456789;
+
+    while n > 0 {
+        let digit = n;
+        let place = 0;
+
+        while digit > 9 {
+            digit = digit / 10;
+            place = place + 1;
+        }
+        putchar digit + 48;
+        
+        while place > 0 {
+            digit = digit * 10;
+            place = place - 1;
+        }
+        n = n - digit;
+    }
+
+    putchar 10;
+
+    return 0;
+}
