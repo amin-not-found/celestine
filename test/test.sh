@@ -9,7 +9,7 @@ for test_file in ${tests[@]}; do
     test_res="${test_file%.*}"
     [ ! -f "$test_res" ] && echo -e "\e[33mTest result for ${test_file} doesn't exist\e[0m" && continue
 
-    ${SCRIPT_DIR}/../main.py -r "$test_file" > "$TEMP_FILE"
+    ${SCRIPT_DIR}/../celestine/main.py -r "$test_file" > "$TEMP_FILE"
     rm "${test_res}.out"
 
     if cmp -- "$TEMP_FILE" "$test_res"; then

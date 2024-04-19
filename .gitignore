@@ -3,6 +3,7 @@ DESIGN.md
 TODO.md
 .vscode
 
+**/__pycache__
 *.ssa
 *.s
 *.out

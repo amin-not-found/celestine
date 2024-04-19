@@ -54,9 +54,9 @@ single-line-if-stmt=yes
 
 [MESSAGES CONTROL]
 
-disable=raw-checker-failed,
-        missing-docstring,
+disable=missing-docstring,
         raise-missing-from,
+        #raw-checker-failed,
         #bad-inline-option,
         #locally-disabled,
         #file-ignored,

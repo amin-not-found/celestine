@@ -1,7 +1,8 @@
 # Celestine
 Celestine is my experimental programming language. I first started with the idea of improving C but it's getting a bit far away from just that.
 
-As of now, this is pretty much the only program supported and only on 64-bit linux:
+As of now, Celestine is in early development and it's only supported on 64-bit linux.
+Here's an example of a program written in Celestine:
 ```ts
 function main(): int = {
     let ascii_zero = 48;
