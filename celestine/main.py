@@ -5,9 +5,9 @@ from pathlib import Path
 from subprocess import run
 from argparse import ArgumentParser, Namespace
 
-from lexer import Lexer
 from errors import CompilerError
-from ast_nodes import Program, Scope, ScopeType
+from parse import Parser
+from lexer import Lexer
 from gen import QBE
 
 DEBUG = True
@@ -20,8 +20,7 @@ def compile_file(args: Namespace) -> Path:
     out_file = path.parent.joinpath(f"{path.stem}.out")
 
     lexer = Lexer.lex_file(path)
-    global_scope = Scope(ScopeType.GLOBAL)
-    program = Program(lexer, global_scope)
+    program = Parser(lexer).parse()
 
     if args.print:
         print(program)
