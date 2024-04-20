@@ -1,8 +1,6 @@
 from enum import Enum, auto
 from typing import Optional, NamedTuple
 
-from errors import VariableRedeclareError
-
 
 class IncrementalGen:
     def __init__(self, prefix: str) -> None:
@@ -25,10 +23,14 @@ class VariableState(NamedTuple):
     level: ScopeType
 
 
+class VariableRedeclareError(Exception):
+    pass
+
+
 class Scope:
     _vars: dict[str, VariableState]
 
-    def __init__(self, kind: ScopeType, parent=Optional["Scope"]):
+    def __init__(self, kind: ScopeType, parent: Optional["Scope"] = None):
         if kind != ScopeType.GLOBAL and parent is None:
             raise RuntimeError("Non global scopes should have a parent")
 

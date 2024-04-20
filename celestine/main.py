@@ -5,7 +5,6 @@ from pathlib import Path
 from subprocess import run
 from argparse import ArgumentParser, Namespace
 
-from errors import CompilerError
 from parse import Parser
 from lexer import Lexer
 from gen import QBE
@@ -20,7 +19,19 @@ def compile_file(args: Namespace) -> Path:
     out_file = path.parent.joinpath(f"{path.stem}.out")
 
     lexer = Lexer.lex_file(path)
-    program = Parser(lexer).parse()
+    parser = Parser(lexer)
+
+    try:
+        program = parser.parse()
+    except StopIteration:
+        if len(parser.diagnostics) < 1:
+            print(f"{lexer.text.name}: Unexpected end of file", file=sys.stderr)
+            sys.exit(1)
+
+    if len(parser.diagnostics) > 0:
+        for d in parser.diagnostics:
+            print(d, file=sys.stderr)
+        sys.exit(1)
 
     if args.print:
         print(program)
@@ -60,14 +71,7 @@ def main():
     arg_parser.add_argument("file")
 
     args = arg_parser.parse_args()
-    try:
-        out_path = compile_file(args)
-
-    except CompilerError as ce:
-        if DEBUG:
-            raise ce
-        print(ce, file=sys.stderr)
-        sys.exit(-1)
+    out_path = compile_file(args)
 
     if args.run:
         run([out_path.absolute()], check=True)

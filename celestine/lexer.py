@@ -1,10 +1,7 @@
-from typing import TextIO, Optional
+from typing import TextIO, NamedTuple
 from collections.abc import Iterator
 from enum import Enum, auto
-from dataclasses import dataclass
 from os import PathLike
-
-from errors import EndOfTokens, CompilerError
 
 
 class TokenKind(Enum):
@@ -51,11 +48,16 @@ class TokenKind(Enum):
     IDENTIFIER = auto()
 
 
-@dataclass
-class Token:
+class Token(NamedTuple):
     kind: TokenKind
     offset: int
     lexeme: str
+
+
+class UnrecognizedToken(Exception):
+    def __init__(self, text: str, *args: object) -> None:
+        self.text = text
+        super().__init__(*args)
 
 
 class Lexer(Iterator):
@@ -107,18 +109,17 @@ class Lexer(Iterator):
         "while": TokenKind.WHILE,
     }
 
-    def __init__(self, text: TextIO, path: Optional[PathLike] = None):
+    def __init__(self, text: TextIO):
         self._position = 0
         self._text = text
         self._peeked = False
         self._peeked_token = None
-        self.path = path
         assert self._text.seekable()
 
     @staticmethod
     def lex_file(path: PathLike):
-        fp = open(path, encoding="UTF-8")
-        return Lexer(fp, path)
+        fp = open(path, encoding="UTF-8", newline="")
+        return Lexer(fp)
 
     def __iter__(self):
         return self
@@ -135,7 +136,7 @@ class Lexer(Iterator):
 
         if not c:
             self._position -= 1
-            raise EndOfTokens(self.text, self._position, filepath=self.path)
+            raise StopIteration
 
         kind = self.single_char_tokens.get(c)
 
@@ -159,9 +160,7 @@ class Lexer(Iterator):
                 return self.parse_int()
             if c.isalpha() or c == "_":
                 return self.parse_id()
-            raise CompilerError(
-                f"Unrecognized token '{c}'.", self._text, self._position, self.path
-            )
+            raise UnrecognizedToken(c)
 
         return Token(kind, self._position, c)
 
@@ -197,12 +196,6 @@ class Lexer(Iterator):
         """Get next token"""
         return next(self)
 
-    def peek(self):
-        """Look at next token without moving"""
-        self._peeked_token = self.next()
-        self._peeked = True
-        return self._peeked_token
-
     def parse_int(self) -> Token:
         pos = self._position
         s = []
@@ -226,14 +219,3 @@ class Lexer(Iterator):
         kind = self.keywords.get(s) or TokenKind.IDENTIFIER
 
         return Token(kind, pos, s)
-
-    def expect_token(self, kind: TokenKind) -> Token:
-        token = self.next()
-        if token.kind != kind:
-            raise CompilerError(
-                f"Expected '{kind}' but got {token}",
-                self._text,
-                self._position,
-                filepath=self.path,
-            )
-        return token
