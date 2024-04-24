@@ -1,4 +1,4 @@
-function main(): int = {
+function main(): i32 = {
     // an inefficient program to print a number digit by digit
     let mut n = 123456789;
 

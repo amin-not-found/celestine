@@ -1,4 +1,4 @@
-function main(): int = {
+function main(): i32 = {
     // 48 is the ASCII code of zero
     putchar 1 + 48;
     putchar 10; // newline

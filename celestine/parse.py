@@ -3,7 +3,37 @@ from typing import NamedTuple, TextIO, Optional
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
 from scope import Scope, ScopeType, VariableRedeclareError
 import ast_nodes as ast
-from type import I32, PrimitiveType
+from type import PrimitiveType, I32, I64
+
+
+expr_precedences = {
+    TokenKind.ASSIGNMENT: 1,
+    TokenKind.L_OR: 2,
+    TokenKind.L_AND: 3,
+    TokenKind.LT: 4,
+    TokenKind.GT: 4,
+    TokenKind.LE: 4,
+    TokenKind.GE: 4,
+    TokenKind.EQ: 4,
+    TokenKind.NE: 4,
+    TokenKind.V_BAR: 5,
+    TokenKind.CARET: 6,
+    TokenKind.AMPERSAND: 7,
+    TokenKind.SHIFT_L: 8,
+    TokenKind.SHIFT_R: 8,
+    TokenKind.PLUS: 9,
+    TokenKind.MINUS: 9,
+    TokenKind.ASTERISK: 10,
+    TokenKind.SLASH: 10,
+    TokenKind.PERCENT: 10,
+}
+
+statement_exprs = (
+    ast.IfExpr,
+    ast.WhileExpr,
+)
+
+primitive_types = {"i32": I32, "i64": I64}
 
 
 class Diagnostic(NamedTuple):
@@ -41,33 +71,6 @@ class ParseError(Exception):
 
 
 class Parser:
-    expr_precedences = {
-        TokenKind.ASSIGNMENT: 1,
-        TokenKind.L_OR: 2,
-        TokenKind.L_AND: 3,
-        TokenKind.LT: 4,
-        TokenKind.GT: 4,
-        TokenKind.LE: 4,
-        TokenKind.GE: 4,
-        TokenKind.EQ: 4,
-        TokenKind.NE: 4,
-        TokenKind.V_BAR: 5,
-        TokenKind.CARET: 6,
-        TokenKind.AMPERSAND: 7,
-        TokenKind.SHIFT_L: 8,
-        TokenKind.SHIFT_R: 8,
-        TokenKind.PLUS: 9,
-        TokenKind.MINUS: 9,
-        TokenKind.ASTERISK: 10,
-        TokenKind.SLASH: 10,
-        TokenKind.PERCENT: 10,
-    }
-
-    statement_exprs = (
-        ast.IfExpr,
-        ast.WhileExpr,
-    )
-
     def __init__(self, lexer: Lexer) -> None:
         self.lexer = lexer
         self.diagnostics: list[Diagnostic] = []
@@ -125,7 +128,7 @@ class Parser:
         return token
 
     def expr_precedence(self, token):
-        return self.expr_precedences.get(token.kind, 0)
+        return expr_precedences.get(token.kind, 0)
 
     def expr(self, scope: Scope, precedence=0):
         """An implementation of a Pratt parser"""
@@ -147,6 +150,19 @@ class Parser:
 
         return left
 
+    def type(self):
+        token = self.advance()
+
+        if token.kind != TokenKind.IDENTIFIER:
+            self.sync_error(token.offset, "Expected a type identifier.")
+
+        typ = primitive_types.get(token.lexeme)
+
+        if typ is None:
+            self.error(token.offset, f"Unknown type {token.lexeme}.")
+
+        return typ
+
     def integer(self, scope: Scope):
         token = self.advance()
         return ast.IntLiteral(token.lexeme, scope)
@@ -166,7 +182,7 @@ class Parser:
 
     def unary_op(self, scope: Scope):
         op = self.advance()
-        expr = self.expr(scope, len(self.expr_precedences))
+        expr = self.expr(scope, len(expr_precedences))
 
         if not issubclass(expr.type, PrimitiveType):
             self.error(expr.offset, "Operators are only supported for primitive types")
@@ -223,7 +239,7 @@ class Parser:
         elif not var_state.mutable:
             self.error(op.offset, f"Cannot assign to immutable variable {left.name}")
 
-        right = self.expr(scope, self.expr_precedences[op.kind])
+        right = self.expr(scope, expr_precedences[op.kind])
         return ast.BinaryOp(op.kind, left, right, scope)
 
     def infix(self, op: Token, left: ast.Expr, scope: Scope):
@@ -232,7 +248,7 @@ class Parser:
         if op.kind == TokenKind.ASSIGNMENT:
             return self.assignment(op, left, scope)
 
-        right = self.expr(scope, self.expr_precedences[op.kind])
+        right = self.expr(scope, expr_precedences[op.kind])
 
         if not issubclass(left.type, PrimitiveType):
             self.error(op.offset, "Operators are only supported for primitive types.")
@@ -270,15 +286,33 @@ class Parser:
             return self.error(token.offset, "Expected an identifier.")
         name = token.lexeme
 
+        annotated_type = None
+        token = self.peek()
+        if token.kind == TokenKind.COLON:
+            self.advance()
+            annotated_type = self.type()
+
         expr = None
+        expr_type = None
         token = self.peek()
         if token.kind == TokenKind.ASSIGNMENT:
             self.advance()
             expr = self.expr(scope)
-            typ = expr.type
-        else:
-            # TODO : WARNING : temporary workaround for types
-            typ = I32
+            expr_type = expr.type
+
+        typ = expr_type or annotated_type
+
+        if typ is None:
+            self.sync_error(
+                token.offset, "Expected type annotation for uninitialized type"
+            )
+        elif (annotated_type is not None and annotated_type != typ) or (
+            expr_type is not None and expr_type != typ
+        ):
+            self.error(
+                token.offset,
+                "Assigned value doesn't have the same type as annotation",
+            )
 
         try:
             scope.declare_var(name, typ, mutable)
@@ -323,7 +357,7 @@ class Parser:
         except ParseError:
             return None
 
-        if not (isinstance(stmt, ast.Expr) and isinstance(stmt, self.statement_exprs)):
+        if not (isinstance(stmt, ast.Expr) and isinstance(stmt, statement_exprs)):
             self.expect_token(TokenKind.SEMICOLON)
         return stmt
 
@@ -333,16 +367,20 @@ class Parser:
         # For now we only parse a main function that has no arguments
         # TODO : handle errors when function parsing became more sophisticated
         self.expect_token(TokenKind.FUNCTION)
-        name = self.expect_token(TokenKind.IDENTIFIER).lexeme
-        assert name == "main"
+        name = self.expect_token(TokenKind.IDENTIFIER)
+        assert name.lexeme == "main"
         self.expect_token(TokenKind.LEFT_PAREN)
         self.expect_token(TokenKind.RIGHT_PAREN)
         self.expect_token(TokenKind.COLON)
-        self.expect_token(TokenKind.INT)
+
+        typ = self.type()
+        if typ != I32:
+            self.error(name.offset, "Main function has to return i32.")
+
         self.expect_token(TokenKind.ASSIGNMENT)
 
         body = self.block(scope)
-        return ast.Function(name, body, scope, I32)
+        return ast.Function(name.lexeme, body, scope, I32)
 
     def program(self, scope: Scope):
         try:

@@ -1,4 +1,4 @@
-function main(): int = {
+function main(): i32 = {
     let zero = 48;
 
     let a = 1;

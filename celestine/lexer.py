@@ -39,7 +39,6 @@ class TokenKind(Enum):
     # Keywords
     PUTCHAR = auto()  # TODO : remove in future
     FUNCTION = auto()
-    INT = auto()
     RETURN = auto()
     LET = auto()
     MUT = auto()
@@ -102,7 +101,6 @@ class Lexer(Iterator):
     keywords = {
         "putchar": TokenKind.PUTCHAR,
         "function": TokenKind.FUNCTION,
-        "int": TokenKind.INT,
         "return": TokenKind.RETURN,
         "let": TokenKind.LET,
         "mut": TokenKind.MUT,

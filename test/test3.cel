@@ -1,5 +1,5 @@
-function main(): int = {
-    let mut zero;
+function main(): i32 = {
+    let mut zero: i32;
     let mut temp = zero = 48;
     let line_break = 10;
 

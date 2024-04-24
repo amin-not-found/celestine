@@ -1,7 +1,7 @@
-function main(): int = {
+function main(): i32 = {
     let z = 48;
     let q_mark = 63;
-    let mut x;
+    let mut x: i32;
     
     // TODO : replace with loop
     x = 2;

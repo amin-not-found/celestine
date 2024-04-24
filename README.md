@@ -4,7 +4,7 @@ Celestine is my experimental programming language. I first started with the idea
 As of now, Celestine is in early development and it's only supported on 64-bit linux.
 Here's an example of a program written in Celestine:
 ```rust
-function main(): int = {
+function main(): i32 = {
     let ascii_zero = 48;
     let newline = 10;
     let n = 3;
@@ -102,14 +102,14 @@ if x % 2 == 0 {
 Only while loop is supported at the moment. Example:
 ```ts
 // prints a pyramid pattern
-function main(): int = {
+function main(): i32 = {
     let rows = 5;
     let star = 42;
     let newline = 10;
 
-    let i = 1;
+    let mut i = 1;
     while i <= rows {
-        let j = 0;
+        let mut j = 0;
         while j < i {
             putchar star;
             j = j + 1;

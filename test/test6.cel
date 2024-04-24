@@ -1,4 +1,4 @@
-function main(): int = {
+function main(): i32 = {
     let z = 48;
     let lf = 10;
     putchar (0 && 0) + z;
