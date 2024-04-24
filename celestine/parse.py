@@ -3,6 +3,7 @@ from typing import NamedTuple, TextIO, Optional
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
 from scope import Scope, ScopeType, VariableRedeclareError
 import ast_nodes as ast
+from type import I32, PrimitiveType
 
 
 class Diagnostic(NamedTuple):
@@ -136,35 +137,45 @@ class Parser:
         token = self.peek()
 
         while precedence < self.expr_precedence(token):
-            left = self.parse_infix(token, left, scope)
+            left = self.infix(token, left, scope)
             token = self.peek()
 
         return left
 
-    def parse_integer(self, scope: Scope):
+    def integer(self, scope: Scope):
         token = self.advance()
         return ast.IntLiteral(token.lexeme, scope)
 
-    def parse_variable(self, scope: Scope):
+    def variable(self, scope: Scope):
         # TODO : error if uninitialized
         token = self.advance()
         name = token.lexeme
-        if scope.var_state(name) is None:
+        state = scope.var_state(name)
+        if state is None:
             self.error(token.offset, f"Undefined identifier '{name}'.")
-        return ast.Variable(name, scope)
+        return ast.Variable(name, scope, state.type)
 
-    def parse_unary_op(self, scope: Scope):
+    def unary_op(self, scope: Scope):
         op = self.advance()
         expr = self.expr(scope, len(self.expr_precedences))
+
+        if not issubclass(expr.type, PrimitiveType):
+            self.error(expr.offset, "Operators are only supported for primitive types")
+
+        if op.kind not in expr.type().unary_operators:
+            self.error(
+                op.offset, f"Operator {op.kind.name} is not supported by {expr.type}"
+            )
+
         return ast.UnaryOp(op.kind, expr, scope)
 
-    def parse_group(self, scope: Scope):
+    def group(self, scope: Scope):
         self.advance()
         result = self.expr(scope)
         self.expect_token(TokenKind.RIGHT_PAREN)
         return result
 
-    def parse_if(self, scope: Scope):
+    def if_expr(self, scope: Scope):
         if_scope = Scope(ScopeType.BLOCK, scope)
         arms = []
 
@@ -185,18 +196,41 @@ class Parser:
                 break
         return ast.IfExpr(arms, if_scope)
 
-    def parse_while(self, scope: Scope):
+    def while_expr(self, scope: Scope):
         self.expect_token(TokenKind.WHILE)
         cond = self.expr(scope)
         scope = Scope(ScopeType.BLOCK, scope)
         body = self.block(scope)
         return ast.WhileExpr(cond, body, scope)
 
-    def parse_infix(self, op: Token, left, scope: Scope):
-        self.advance()
-        right = self.expr(scope, self.expr_precedences[op.kind])
-        if op.kind == TokenKind.ASSIGNMENT and not isinstance(left, ast.Variable):
+    def assignment(self, op: Token, left: ast.Expr, scope: Scope):
+        if not isinstance(left, ast.Variable):
             self.error(op.offset, "Left side of assignment should be an identifier.")
+        right = self.expr(scope, self.expr_precedences[op.kind])
+        return ast.BinaryOp(op.kind, left, right, scope)
+
+    def infix(self, op: Token, left: ast.Expr, scope: Scope):
+        self.advance()
+
+        if op.kind == TokenKind.ASSIGNMENT:
+            return self.assignment(op, left, scope)
+
+        right = self.expr(scope, self.expr_precedences[op.kind])
+
+        if not issubclass(left.type, PrimitiveType):
+            self.error(op.offset, "Operators are only supported for primitive types.")
+
+        if left.type != right.type:
+            self.error(
+                op.offset,
+                f"Left({left.type}) and right({right.type}) side of operation don't have the same type.",
+            )
+
+        if op.kind not in left.type.binary_operators:
+            self.error(
+                op.offset, f"Operator {op.kind.name} isn't supported for {left.type}"
+            )
+
         return ast.BinaryOp(op.kind, left, right, scope)
 
     def simple_statement(self, scope: Scope):
@@ -211,19 +245,23 @@ class Parser:
             return self.error(token.offset, "Expected an identifier.")
         name = token.lexeme
 
-        try:
-            scope.declare_var(name)
-        except VariableRedeclareError as _:
-            self.error(token.offset, f"Declaration of existing variable '{name}'.")
-
         token = self.peek()
 
         expr = None
         if token.kind == TokenKind.ASSIGNMENT:
             self.advance()
             expr = self.expr(scope)
+            typ = expr.type
+        else:
+            # TODO : WARNING : temporary workaround for types
+            typ = I32
+        try:
+            scope.declare_var(name, typ)
 
-        return ast.VariableDeclare(expr, name, scope)
+        except VariableRedeclareError as _:
+            self.error(token.offset, f"Declaration of existing variable '{name}'.")
+
+        return ast.VariableDeclare(expr, name, typ, scope)
 
     def parse(self):
         global_scope = Scope(ScopeType.GLOBAL)
@@ -280,17 +318,17 @@ class Parser:
         self.expect_token(TokenKind.ASSIGNMENT)
 
         body = self.block(scope)
-        return ast.Function(name, body, scope)
+        return ast.Function(name, body, scope, I32)
 
     def program(self, scope: Scope):
         return ast.Program(self.function(scope), scope)
 
     prefix_parse_functions = {
-        TokenKind.INTEGER: parse_integer,
-        TokenKind.LEFT_PAREN: parse_group,
-        TokenKind.MINUS: parse_unary_op,
-        TokenKind.BANG: parse_unary_op,
-        TokenKind.IDENTIFIER: parse_variable,
-        TokenKind.IF: parse_if,
-        TokenKind.WHILE: parse_while,
+        TokenKind.INTEGER: integer,
+        TokenKind.LEFT_PAREN: group,
+        TokenKind.MINUS: unary_op,
+        TokenKind.BANG: unary_op,
+        TokenKind.IDENTIFIER: variable,
+        TokenKind.IF: if_expr,
+        TokenKind.WHILE: while_expr,
     }

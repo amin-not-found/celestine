@@ -1,5 +1,15 @@
+from abc import ABCMeta, abstractmethod
 from enum import Enum, auto
 from typing import Optional, NamedTuple
+
+
+class Type:
+    __metaclass__ = ABCMeta
+
+    @property
+    @staticmethod
+    @abstractmethod
+    def size() -> int: ...
 
 
 class IncrementalGen:
@@ -21,6 +31,7 @@ class ScopeType(Enum):
 class VariableState(NamedTuple):
     address: str
     level: ScopeType
+    type: Type
 
 
 class VariableRedeclareError(Exception):
@@ -90,10 +101,10 @@ class Scope:
             case _:
                 raise ValueError("Unreachable")
 
-    def declare_var(self, name: str):
+    def declare_var(self, name: str, typ: Type):
         if name in self._vars:
             raise VariableRedeclareError()
-        self._vars[name] = VariableState(self._var(), self._kind)
+        self._vars[name] = VariableState(self._var(), self._kind, typ)
 
     def var_state(self, name: str) -> Optional[VariableState]:
         state = self._vars.get(name)

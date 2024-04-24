@@ -3,11 +3,7 @@ from abc import abstractmethod, ABCMeta
 
 from lexer import TokenKind
 from scope import Scope
-
-
-class ImmediateResult(NamedTuple):
-    var: Optional[str]
-    ir: str
+from type import ImmediateResult, PrimitiveType, Integer, I64, I32
 
 
 class IfArm(NamedTuple):
@@ -23,17 +19,22 @@ class GenBackend:
     # pylint: disable=unused-argument
     __metaclass__ = ABCMeta
 
+    type_implementations: dict[PrimitiveType, PrimitiveType]
+
     @gen_method
     def int_literal(scope: Scope, integer_str: str) -> ImmediateResult: ...
 
     @gen_method
     def unary_op(
-        scope: Scope, op: TokenKind, expr: ImmediateResult
+        scope: Scope,
+        op: TokenKind,
+        typ: PrimitiveType,
+        expr: ImmediateResult,
     ) -> ImmediateResult: ...
 
     @gen_method
     def assignment(
-        scope: Scope, name: str, expr: ImmediateResult
+        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
     ) -> ImmediateResult: ...
 
     @gen_method
@@ -43,7 +44,11 @@ class GenBackend:
 
     @gen_method
     def binary_op(
-        scope: Scope, op: TokenKind, left: ImmediateResult, right: ImmediateResult
+        scope: Scope,
+        op: TokenKind,
+        typ: PrimitiveType,
+        left: ImmediateResult,
+        right: ImmediateResult,
     ) -> ImmediateResult: ...
 
     @gen_method
@@ -58,13 +63,14 @@ class GenBackend:
     def var(scope: Scope, name: str) -> ImmediateResult: ...
 
     @gen_method
-    def simple_statement(
-        scope: Scope, kind: TokenKind, expr: ImmediateResult
-    ) -> ImmediateResult: ...
+    def putchar(expr: ImmediateResult, typ: Integer) -> ImmediateResult: ...
+
+    @gen_method
+    def return_stmt(expr: ImmediateResult) -> ImmediateResult: ...
 
     @gen_method
     def var_declare(
-        scope: Scope, name: str, expr: ImmediateResult
+        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
     ) -> ImmediateResult: ...
 
     @gen_method
@@ -83,54 +89,152 @@ class IfLabels(NamedTuple):
     else_: Optional[str]
 
 
+class QBEInteger(Integer):
+    __metaclass__ = ABCMeta
+
+    @property
+    @abstractmethod
+    def signature(self) -> str: ...
+
+    @classmethod
+    def assign(cls, name: str, a: str, scope: Scope):
+        var_signature = scope.var_signature(name)
+        return ImmediateResult(
+            None, f"\n    store{cls.signature} %{a}, {var_signature}"
+        )
+
+    @classmethod
+    def bin_op(cls, instruction: str, a: str, b: str, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(
+            res, f"\n    %{res} ={cls.signature} {instruction} %{a}, %{b}"
+        )
+
+    @classmethod
+    def negative(cls, a: str, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(res, f"\n    %{res} ={cls.signature} neg %{a}")
+
+    @classmethod
+    def logical_not(cls, a: str, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(res, f"\n    %{res} =l ceq{cls.signature} %{a}, 0")
+
+    @classmethod
+    def add(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("add", a, b, scope)
+
+    @classmethod
+    def subtract(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("sub", a, b, scope)
+
+    @classmethod
+    def multiply(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("mul", a, b, scope)
+
+    @classmethod
+    def divide(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("div", a, b, scope)
+
+    @classmethod
+    def reminder(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("rem", a, b, scope)
+
+    @classmethod
+    def bit_and(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("and", a, b, scope)
+
+    @classmethod
+    def bit_or(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("or", a, b, scope)
+
+    @classmethod
+    def bit_xor(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("xor", a, b, scope)
+
+    @classmethod
+    def left_shift(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("shl", a, b, scope)
+
+    @classmethod
+    def right_shift(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("sar", a, b, scope)
+
+    @classmethod
+    def gt(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op(f"csgt{cls.signature}", a, b, scope)
+
+    @classmethod
+    def lt(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op(f"cslt{cls.signature}", a, b, scope)
+
+    @classmethod
+    def ge(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op(f"csge{cls.signature}", a, b, scope)
+
+    @classmethod
+    def le(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op(f"csle{cls.signature}", a, b, scope)
+
+    @classmethod
+    def eq(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op(f"ceq{cls.signature}", a, b, scope)
+
+    @classmethod
+    def ne(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op(f"cne{cls.signature}", a, b, scope)
+
+    @classmethod
+    def logical_and(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        res = scope.temp()
+        resume_label = scope.label()
+        end_label = scope.label()
+
+        ir = f"""{a.ir}
+    %{res} =w copy %{a.var}
+    jnz %{a.var}, @{resume_label}, @{end_label}
+@{resume_label}{b.ir}
+    %{res} =w copy %{b.var}
+@{end_label}"""
+        return ImmediateResult(res, ir)
+
+    @classmethod
+    def logical_or(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        res = scope.temp()
+        resume_label = scope.label()
+        end_label = scope.label()
+
+        ir = f"""{a.ir}
+    %{res} =w copy %{a.var}
+    jnz %{a.var}, @{end_label}, @{resume_label}
+@{resume_label}{b.ir}
+    %{res} =w copy %{b.var}
+@{end_label}"""
+        return ImmediateResult(res, ir)
+
+
+class QBEi64(QBEInteger, I64):
+    signature = "l"
+
+
+class QBEi32(QBEInteger, I32):
+    signature = "w"
+
+
 class QBE(GenBackend):
-    bin_instructions = {
-        TokenKind.PLUS: "add",
-        TokenKind.MINUS: "sub",
-        TokenKind.ASTERISK: "mul",
-        TokenKind.SLASH: "div",
-        TokenKind.PERCENT: "rem",
-        TokenKind.AMPERSAND: "and",
-        TokenKind.CARET: "xor",
-        TokenKind.V_BAR: "or",
-        TokenKind.SHIFT_L: "shl",
-        TokenKind.SHIFT_R: "sar",
-        TokenKind.LT: "csltl",
-        TokenKind.GT: "csgtl",
-        TokenKind.LE: "cslel",
-        TokenKind.GE: "csgel",
-        TokenKind.EQ: "ceql",
-        TokenKind.NE: "cnel",
-    }
+    type_implementations = {I64: QBEi64, I32: QBEi32}
 
     @staticmethod
-    def int_literal(scope: Scope, integer_str: str):
+    def int_literal(scope: Scope, integer_str: str) -> ImmediateResult:
         var_name = scope.temp()
         return ImmediateResult(var_name, f"\n    %{var_name} =l copy {integer_str}")
 
     @staticmethod
-    def unary_op(scope: Scope, op: TokenKind, expr: ImmediateResult):
-        match op:
-            case TokenKind.MINUS:
-                new_var = scope.temp()
-                return ImmediateResult(
-                    new_var, expr.ir + f"\n    %{new_var} =l neg %{expr.var}"
-                )
-            case TokenKind.BANG:
-                new_var = scope.temp()
-                return ImmediateResult(
-                    new_var, expr.ir + f"\n    %{new_var} =l ceql %{expr.var}, 0"
-                )
-            case _:
-                raise TypeError(f"Unary operation not implemented for token of {op}")
-
-    @staticmethod
-    def assignment(scope: Scope, name: str, expr: ImmediateResult) -> ImmediateResult:
-        var_signature = scope.var_signature(name)
-
-        return ImmediateResult(
-            expr.var, expr.ir + f"\n    storel %{expr.var}, {var_signature}"
-        )
+    def assignment(
+        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
+    ) -> ImmediateResult:
+        typ = QBE.type_implementations[typ]
+        return ImmediateResult(expr.var, expr.ir + typ.assign(name, expr.var, scope).ir)
 
     @staticmethod
     def logical_connective(
@@ -157,13 +261,31 @@ class QBE(GenBackend):
         return ImmediateResult(result_var, ir)
 
     @staticmethod
+    def unary_op(
+        scope: Scope,
+        op: TokenKind,
+        typ: PrimitiveType,
+        expr: ImmediateResult,
+    ):
+        typ = QBE.type_implementations[typ]
+        func = typ.unary_op_func(op)
+        (var, ir) = func(expr.var, scope)
+        ir = expr.ir + ir
+        return ImmediateResult(var, ir)
+
+    @staticmethod
     def binary_op(
-        scope: Scope, op: TokenKind, left: ImmediateResult, right: ImmediateResult
-    ) -> ImmediateResult:
-        self_var = scope.temp()
-        instruction = QBE.bin_instructions.get(op)
-        self_ir = f"\n    %{self_var} =l {instruction} %{left.var}, %{right.var}"
-        return ImmediateResult(self_var, left.ir + right.ir + self_ir)
+        scope: Scope,
+        op: TokenKind,
+        typ: PrimitiveType,
+        left: ImmediateResult,
+        right: ImmediateResult,
+    ):
+        typ = QBE.type_implementations[typ]
+        func = typ.binary_op_func(op)
+        (var, ir) = func(left.var, right.var, scope)
+        ir = left.ir + right.ir + ir
+        return ImmediateResult(var, ir)
 
     @staticmethod
     def if_expr(scope: Scope, arms: list[IfArm]) -> ImmediateResult:
@@ -226,29 +348,26 @@ class QBE(GenBackend):
         return ImmediateResult(temp_var, f"\n    %{temp_var} =l loadl {signature}")
 
     @staticmethod
-    def simple_statement(
-        scope: Scope, kind: TokenKind, expr: ImmediateResult
-    ) -> ImmediateResult:
-        ir = expr.ir
-        match kind:
-            case TokenKind.PUTCHAR:
-                ir += f"\n    call $putchar(l %{expr.var})"
-            case TokenKind.RETURN:
-                ir += f"\n    ret %{expr.var}"
-            case _:
-                raise TypeError(f"Can't use token {kind} as statement type")
+    def putchar(expr: ImmediateResult, typ: Integer) -> ImmediateResult:
+        typ = QBE.type_implementations[typ]
+        ir = expr.ir + f"\n    call $putchar({typ.signature} %{expr.var})"
         return ImmediateResult(None, ir)
 
     @staticmethod
-    def var_declare(scope: Scope, name: str, expr: ImmediateResult) -> ImmediateResult:
-        signature = scope.var_signature(name)
-        ir = expr.ir + f"\n    storel %{expr.var}, {signature}"
-        return ImmediateResult(None, ir)
+    def return_stmt(expr: ImmediateResult) -> ImmediateResult:
+        return ImmediateResult(None, expr.ir + f"\n    ret %{expr.var}")
+
+    @staticmethod
+    def var_declare(
+        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
+    ) -> ImmediateResult:
+        return QBE.assignment(scope, name, typ, expr)
 
     @staticmethod
     def block(scope: Scope, statements: list[ImmediateResult]) -> ImmediateResult:
-        body = []
-        body = "".join(f"\n    %{var.address} =l alloc8 8" for _, var in scope.vars())
+        body = "".join(
+            f"\n    %{var.address} =l alloc{var.type.size} 8" for _, var in scope.vars()
+        )
         body += "".join(stmt.ir for stmt in statements)
         return ImmediateResult(None, body)
 
@@ -263,11 +382,11 @@ class QBE(GenBackend):
         return ImmediateResult(
             None,
             """
-function w $pushchar(l %c) { \n\
+function w $pushchar(w %c) { \n\
 @start 
     %a =l alloc4 8 \n\
     storew %c, %a \n\
-    %b =w call $write(w 1, l %a, w 1) \n\
+    %b =w call $write(w 1, w %a, w 1) \n\
     ret %b \n\
 } \n"""
             + main_func.ir,
