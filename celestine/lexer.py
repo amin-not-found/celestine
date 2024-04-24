@@ -120,6 +120,7 @@ class Lexer(Iterator):
 
     @staticmethod
     def lex_file(path: PathLike):
+        # pylint: disable=consider-using-with
         fp = open(path, encoding="UTF-8", newline="")
         return Lexer(fp)
 

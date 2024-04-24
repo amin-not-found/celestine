@@ -240,7 +240,8 @@ class Parser:
         if left.type != right.type:
             self.error(
                 op.offset,
-                f"Left({left.type}) and right({right.type}) side of operation don't have the same type.",
+                f"Left({left.type}) and right({right.type})"
+                " side of operation don't have the same type.",
             )
 
         if op.kind not in left.type.binary_operators:

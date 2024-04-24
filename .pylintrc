@@ -56,6 +56,9 @@ single-line-if-stmt=yes
 
 disable=missing-docstring,
         raise-missing-from,
+        too-many-public-methods,
+        too-few-public-methods,
+        use-dict-literal, # I like dict() more than {} as it's explicit
         #raw-checker-failed,
         #bad-inline-option,
         #locally-disabled,
