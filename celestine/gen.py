@@ -111,8 +111,6 @@ class QBE(GenBackend):
     @staticmethod
     def unary_op(scope: Scope, op: TokenKind, expr: ImmediateResult):
         match op:
-            case TokenKind.PLUS:
-                return expr
             case TokenKind.MINUS:
                 new_var = scope.temp()
                 return ImmediateResult(

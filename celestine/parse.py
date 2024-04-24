@@ -288,7 +288,6 @@ class Parser:
     prefix_parse_functions = {
         TokenKind.INTEGER: parse_integer,
         TokenKind.LEFT_PAREN: parse_group,
-        TokenKind.PLUS: parse_unary_op,
         TokenKind.MINUS: parse_unary_op,
         TokenKind.BANG: parse_unary_op,
         TokenKind.IDENTIFIER: parse_variable,

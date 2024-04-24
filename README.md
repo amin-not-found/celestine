@@ -61,9 +61,9 @@ Statements accept expressions and as of right now only 64-bit integers are suppo
 
 You can do these operations in an expression:
 |Operator|Operation                                     |Precedence
-|--------|----------------------------------------------|----------
-|`+`, `-`     | Positive/negative number                | 1
-|`!`     | Logical not                                  | 1
+|-------------|-----------------------------------------|----------
+|`-`          | Negative number                         | 1
+|`!`          | Logical not                             | 1
 |`*`, `/`, `%`| Multiplication, division, and remainder | 2
 |`+`, `-`     | Addition and subtraction                | 3
 |`<<`, `>>`   | Bitwise left and right shift            | 4
