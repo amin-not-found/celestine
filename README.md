@@ -3,7 +3,7 @@ Celestine is my experimental programming language. I first started with the idea
 
 As of now, Celestine is in early development and it's only supported on 64-bit linux.
 Here's an example of a program written in Celestine:
-```ts
+```rust
 function main(): int = {
     let ascii_zero = 48;
     let newline = 10;
@@ -121,15 +121,17 @@ function main(): int = {
 }
 ```
 ### Variables
-For now only integers are supported. You can declare variables using `let` keyword and assign to them like other languages:
-```ts
-let x;
+For now only integers are supported. Variables are immutable by default and you can make them mutable by using `mut` keyword. You can declare variables using `let` keyword:
+
+```rust
+let mut x;
 let y = 1;
 x = 42;
 ```
+
 Also it's worth noting that variable assignment is an expression and returns the value assigned to variable. This behavior might change in the future.
-```ts
-let x;
+```rust
+let mut x;
 let y = x = 10;
 putchar y; // prints newline
 ```

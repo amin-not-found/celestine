@@ -1,7 +1,7 @@
 function main(): int = {
     let z = 48;
     let q_mark = 63;
-    let x;
+    let mut x;
     
     // TODO : replace with loop
     x = 2;

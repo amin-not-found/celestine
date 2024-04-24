@@ -13,7 +13,7 @@ function main(): int = {
     putchar (1 || 1) + z;
     putchar lf; // 0001
 
-    let a = 0;
+    let mut a = 0;
     putchar (1 || (a=1)) + z;
     putchar a;
     putchar (0 && (a=1)) + z;

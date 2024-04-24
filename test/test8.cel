@@ -1,10 +1,10 @@
 function main(): int = {
     // an inefficient program to print a number digit by digit
-    let n = 123456789;
+    let mut n = 123456789;
 
     while n > 0 {
-        let digit = n;
-        let place = 0;
+        let mut digit = n;
+        let mut place = 0;
 
         while digit > 9 {
             digit = digit / 10;

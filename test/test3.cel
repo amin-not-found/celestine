@@ -1,6 +1,6 @@
 function main(): int = {
-    let zero;
-    let temp = zero = 48;
+    let mut zero;
+    let mut temp = zero = 48;
     let line_break = 10;
 
     putchar 1 + zero;

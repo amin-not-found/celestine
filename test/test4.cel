@@ -2,7 +2,7 @@ function main(): int = {
     let zero = 48;
 
     let a = 1;
-    let b = 999;
+    let mut b = 999;
     let c = (b = 2) * 5 / 3 + -1;
     // b = 2, c = 2
     // should print 5

@@ -83,7 +83,9 @@ class Parser:
                 self._last_token = self.lexer.next()
                 return self._last_token
             except UnrecognizedToken as e:
-                self.error(self.lexer.text, f"Syntax Error: Unexpected '{e.text}'.")
+                self.sync_error(
+                    self.lexer.text, f"Syntax Error: Unexpected '{e.text}'."
+                )
 
     def peek(self) -> Token:
         self._last_token = self.advance()
@@ -107,13 +109,16 @@ class Parser:
 
     def error(self, offset: int, msg: str) -> None:
         self.diagnostics.append(Diagnostic(msg, self.lexer.text, offset))
+
+    def sync_error(self, offset: int, msg: str) -> None:
+        self.diagnostics.append(Diagnostic(msg, self.lexer.text, offset))
         self.synchronize()
         raise ParseError()
 
     def expect_token(self, kind: TokenKind):
         token = self.advance()
         if token.kind != kind:
-            return self.error(
+            return self.sync_error(
                 token.offset,
                 f"Expected '{kind.name.lower()}' but got '{token.lexeme}'.",
             )
@@ -129,7 +134,7 @@ class Parser:
 
         prefix = self.prefix_parse_functions.get(token.kind)
         if not prefix:
-            self.error(
+            self.sync_error(
                 token.offset, f"Unexpected '{token.lexeme}' while parsing expression."
             )
 
@@ -151,9 +156,13 @@ class Parser:
         token = self.advance()
         name = token.lexeme
         state = scope.var_state(name)
+
         if state is None:
-            self.error(token.offset, f"Undefined identifier '{name}'.")
-        return ast.Variable(name, scope, state.type)
+            return self.sync_error(token.offset, f"Undefined identifier '{name}'.")
+        mut = state.mutable
+        typ = state.type
+
+        return ast.Variable(name, scope, mut, typ)
 
     def unary_op(self, scope: Scope):
         op = self.advance()
@@ -206,6 +215,14 @@ class Parser:
     def assignment(self, op: Token, left: ast.Expr, scope: Scope):
         if not isinstance(left, ast.Variable):
             self.error(op.offset, "Left side of assignment should be an identifier.")
+
+        var_state = scope.var_state(left.name)
+
+        if not var_state:
+            self.error(op.offset, f"Assigning to undeclared variable {left.name}.")
+        elif not var_state.mutable:
+            self.error(op.offset, f"Cannot assign to immutable variable {left.name}")
+
         right = self.expr(scope, self.expr_precedences[op.kind])
         return ast.BinaryOp(op.kind, left, right, scope)
 
@@ -240,14 +257,20 @@ class Parser:
 
     def var_declare(self, scope: Scope):
         self.expect_token(TokenKind.LET)
+
+        mutable = False
+        token = self.peek()
+        if token.kind == TokenKind.MUT:
+            self.advance()
+            mutable = True
+
         token = self.advance()
         if token.kind != TokenKind.IDENTIFIER:
             return self.error(token.offset, "Expected an identifier.")
         name = token.lexeme
 
-        token = self.peek()
-
         expr = None
+        token = self.peek()
         if token.kind == TokenKind.ASSIGNMENT:
             self.advance()
             expr = self.expr(scope)
@@ -255,9 +278,9 @@ class Parser:
         else:
             # TODO : WARNING : temporary workaround for types
             typ = I32
-        try:
-            scope.declare_var(name, typ)
 
+        try:
+            scope.declare_var(name, typ, mutable)
         except VariableRedeclareError as _:
             self.error(token.offset, f"Declaration of existing variable '{name}'.")
 
@@ -321,7 +344,10 @@ class Parser:
         return ast.Function(name, body, scope, I32)
 
     def program(self, scope: Scope):
-        return ast.Program(self.function(scope), scope)
+        try:
+            return ast.Program(self.function(scope), scope)
+        except ParseError:
+            return None
 
     prefix_parse_functions = {
         TokenKind.INTEGER: integer,

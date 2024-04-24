@@ -40,6 +40,7 @@ class IntLiteral(AST):
 class Variable(AST):
     name: str
     scope: Scope
+    mutable: bool
     type: Type
 
     def __repr__(self) -> str:

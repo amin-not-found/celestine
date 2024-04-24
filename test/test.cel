@@ -1,0 +1,17 @@
+function main(): int = {
+    let rows = 5;
+    let star = 42;
+    let newline = 10;
+
+    let mut i = 1;
+    while i <= rows {
+        let mut j = 0;
+        while j < i {
+            putchar star;
+            j = j + 1;
+        }
+        putchar newline;
+        i = i + 1;
+    }
+    return 0;
+}

@@ -42,6 +42,7 @@ class TokenKind(Enum):
     INT = auto()
     RETURN = auto()
     LET = auto()
+    MUT = auto()
     IF = auto()
     ELSE = auto()
     WHILE = auto()
@@ -104,6 +105,7 @@ class Lexer(Iterator):
         "int": TokenKind.INT,
         "return": TokenKind.RETURN,
         "let": TokenKind.LET,
+        "mut": TokenKind.MUT,
         "if": TokenKind.IF,
         "else": TokenKind.ELSE,
         "while": TokenKind.WHILE,

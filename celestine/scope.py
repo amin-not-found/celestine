@@ -29,6 +29,7 @@ class ScopeType(Enum):
 
 
 class VariableState(NamedTuple):
+    mutable: bool
     address: str
     level: ScopeType
     type: Type
@@ -101,10 +102,10 @@ class Scope:
             case _:
                 raise ValueError("Unreachable")
 
-    def declare_var(self, name: str, typ: Type):
+    def declare_var(self, name: str, typ: Type, mut: bool):
         if name in self._vars:
             raise VariableRedeclareError()
-        self._vars[name] = VariableState(self._var(), self._kind, typ)
+        self._vars[name] = VariableState(mut, self._var(), self._kind, typ)
 
     def var_state(self, name: str) -> Optional[VariableState]:
         state = self._vars.get(name)
