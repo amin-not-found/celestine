@@ -11,7 +11,7 @@ function main(): i32 = {
     putchar (1 || 0) + z;
     putchar (0 || 1) + z;
     putchar (1 || 1) + z;
-    putchar lf; // 0001
+    putchar lf; // 0111
 
     let mut a = 0;
     putchar (1 || (a=1)) + z;

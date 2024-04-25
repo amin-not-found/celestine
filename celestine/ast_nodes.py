@@ -87,6 +87,10 @@ class BinaryOp(AST):
                 return gen.assignment(self.scope, self.left.name, self.type, right)
             case TokenKind.L_AND | TokenKind.L_OR:
                 return gen.logical_connective(
+                    self.scope, self.op, self.left.to_ir(gen), right, self.type
+                )
+            case TokenKind.L_AND | TokenKind.L_OR:
+                return gen.logical_connective(
                     self.scope, self.op, self.left.to_ir(gen), right
                 )
             case _:

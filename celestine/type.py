@@ -11,7 +11,10 @@ class ImmediateResult(NamedTuple):
 
 
 UnaryOperator = Callable[["PrimitiveType", str, Scope], ImmediateResult]
-BinaryOperator = Callable[["PrimitiveType", str, str, Scope], ImmediateResult]
+BinaryOperator = Callable[
+    ["PrimitiveType", ImmediateResult, ImmediateResult, Scope],
+    ImmediateResult,
+]
 
 
 class PrimitiveType:
@@ -30,7 +33,7 @@ class PrimitiveType:
 
     @classmethod
     @abstractmethod
-    def assign(cls, name: str, a: str, scope: Scope) -> ImmediateResult: ...
+    def assign(cls, name: str, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
 
 
 class NumericalType(PrimitiveType):
@@ -38,47 +41,67 @@ class NumericalType(PrimitiveType):
 
     @classmethod
     @abstractmethod
-    def negative(cls, a: str, scope: Scope) -> ImmediateResult: ...
+    def negative(cls, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def add(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def add(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def subtract(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def subtract(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def multiply(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def multiply(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def divide(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def divide(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def gt(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def gt(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def lt(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def lt(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def ge(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def ge(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def le(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def le(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def eq(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def eq(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def ne(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def ne(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     unary_operators: dict = {
         **PrimitiveType.unary_operators,
@@ -104,39 +127,55 @@ class Integer(NumericalType):
 
     @classmethod
     @abstractmethod
-    def logical_not(cls, a: str, scope: Scope) -> ImmediateResult: ...
+    def logical_not(cls, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def logical_or(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def logical_or(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def logical_and(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def logical_and(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def reminder(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def reminder(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def bit_and(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def bit_and(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def bit_or(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def bit_or(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def bit_xor(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def bit_xor(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def left_shift(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def left_shift(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def right_shift(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
+    def right_shift(
+        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ) -> ImmediateResult: ...
 
     unary_operators: dict = {
         **NumericalType.unary_operators,

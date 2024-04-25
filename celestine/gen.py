@@ -3,7 +3,7 @@ from abc import abstractmethod, ABCMeta
 
 from lexer import TokenKind
 from scope import Scope
-from type import ImmediateResult, PrimitiveType, Integer, I64, I32
+from type import ImmediateResult, PrimitiveType, Integer, I64, I32, NumericalType
 
 
 class IfArm(NamedTuple):
@@ -39,7 +39,11 @@ class GenBackend:
 
     @gen_method
     def logical_connective(
-        scope: Scope, op: TokenKind, left: ImmediateResult, right: ImmediateResult
+        scope: Scope,
+        op: TokenKind,
+        left: ImmediateResult,
+        right: ImmediateResult,
+        typ: PrimitiveType,
     ) -> ImmediateResult: ...
 
     @gen_method
@@ -89,7 +93,7 @@ class IfLabels(NamedTuple):
     else_: Optional[str]
 
 
-class QBEInteger(Integer):
+class QBENumerical(NumericalType):
     __metaclass__ = ABCMeta
 
     @property
@@ -97,92 +101,107 @@ class QBEInteger(Integer):
     def signature(self) -> str: ...
 
     @classmethod
-    def assign(cls, name: str, a: str, scope: Scope):
+    def assign(cls, name: str, a: ImmediateResult, scope: Scope):
         var_signature = scope.var_signature(name)
         return ImmediateResult(
-            None, f"\n    store{cls.signature} %{a}, {var_signature}"
+            a.var, a.ir + f"\n    store{cls.signature} %{a.var}, {var_signature}"
         )
 
     @classmethod
-    def bin_op(cls, instruction: str, a: str, b: str, scope: Scope):
+    def bin_op(
+        cls, instruction: str, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ):
+        res = scope.temp()
+        ir = (
+            a.ir
+            + b.ir
+            + f"\n    %{res} ={cls.signature} {instruction} %{a.var}, %{b.var}"
+        )
+        return ImmediateResult(res, ir)
+
+    @classmethod
+    def logical_not(cls, a: ImmediateResult, scope: Scope):
         res = scope.temp()
         return ImmediateResult(
-            res, f"\n    %{res} ={cls.signature} {instruction} %{a}, %{b}"
+            res, a.ir + f"\n    %{res} =l ceq{cls.signature} %{a.var}, 0"
         )
 
     @classmethod
-    def negative(cls, a: str, scope: Scope):
-        res = scope.temp()
-        return ImmediateResult(res, f"\n    %{res} ={cls.signature} neg %{a}")
-
-    @classmethod
-    def logical_not(cls, a: str, scope: Scope):
-        res = scope.temp()
-        return ImmediateResult(res, f"\n    %{res} =l ceq{cls.signature} %{a}, 0")
-
-    @classmethod
-    def add(cls, a: str, b: str, scope: Scope):
+    def add(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op("add", a, b, scope)
 
     @classmethod
-    def subtract(cls, a: str, b: str, scope: Scope):
+    def subtract(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op("sub", a, b, scope)
 
     @classmethod
-    def multiply(cls, a: str, b: str, scope: Scope):
+    def multiply(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op("mul", a, b, scope)
 
     @classmethod
-    def divide(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("div", a, b, scope)
-
-    @classmethod
-    def reminder(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("rem", a, b, scope)
-
-    @classmethod
-    def bit_and(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("and", a, b, scope)
-
-    @classmethod
-    def bit_or(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("or", a, b, scope)
-
-    @classmethod
-    def bit_xor(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("xor", a, b, scope)
-
-    @classmethod
-    def left_shift(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("shl", a, b, scope)
-
-    @classmethod
-    def right_shift(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op("sar", a, b, scope)
-
-    @classmethod
-    def gt(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op(f"csgt{cls.signature}", a, b, scope)
-
-    @classmethod
-    def lt(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op(f"cslt{cls.signature}", a, b, scope)
-
-    @classmethod
-    def ge(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op(f"csge{cls.signature}", a, b, scope)
-
-    @classmethod
-    def le(cls, a: str, b: str, scope: Scope):
-        return cls.bin_op(f"csle{cls.signature}", a, b, scope)
-
-    @classmethod
-    def eq(cls, a: str, b: str, scope: Scope):
+    def eq(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op(f"ceq{cls.signature}", a, b, scope)
 
     @classmethod
-    def ne(cls, a: str, b: str, scope: Scope):
+    def ne(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op(f"cne{cls.signature}", a, b, scope)
+
+
+class QBESignedNumerical(QBENumerical):
+    # pylint: disable=abstract-method
+    __metaclass__ = ABCMeta
+
+    @property
+    @abstractmethod
+    def sign_signature(self) -> str: ...
+
+    @classmethod
+    def negative(cls, a: ImmediateResult, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(
+            res, a.ir + f"\n    %{res} ={cls.signature} neg %{a.var}"
+        )
+
+    @classmethod
+    def divide(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("div", a, b, scope)
+
+    @classmethod
+    def gt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op(f"c{cls.sign_signature}gt{cls.signature}", a, b, scope)
+
+    @classmethod
+    def lt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op(f"c{cls.sign_signature}lt{cls.signature}", a, b, scope)
+
+    @classmethod
+    def ge(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op(f"c{cls.sign_signature}ge{cls.signature}", a, b, scope)
+
+    @classmethod
+    def le(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op(f"c{cls.sign_signature}le{cls.signature}", a, b, scope)
+
+
+class QBEInteger(QBENumerical):
+    # pylint: disable=abstract-method
+    __metaclass__ = ABCMeta
+
+    @classmethod
+    def bit_and(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("and", a, b, scope)
+
+    @classmethod
+    def bit_or(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("or", a, b, scope)
+
+    @classmethod
+    def bit_xor(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("xor", a, b, scope)
+
+    @classmethod
+    def left_shift(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("shl", a, b, scope)
 
     @classmethod
     def logical_and(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
@@ -192,7 +211,7 @@ class QBEInteger(Integer):
 
         ir = f"""{a.ir}
     %{res} =w copy %{a.var}
-    jnz %{a.var}, @{resume_label}, @{end_label}
+    jnz %{a.var}, @{end_label}, @{resume_label}
 @{resume_label}{b.ir}
     %{res} =w copy %{b.var}
 @{end_label}"""
@@ -206,18 +225,46 @@ class QBEInteger(Integer):
 
         ir = f"""{a.ir}
     %{res} =w copy %{a.var}
-    jnz %{a.var}, @{end_label}, @{resume_label}
+    jnz %{a.var}, @{resume_label}, @{end_label}
 @{resume_label}{b.ir}
     %{res} =w copy %{b.var}
 @{end_label}"""
         return ImmediateResult(res, ir)
 
 
-class QBEi64(QBEInteger, I64):
+class QBESignedInteger(QBEInteger, QBESignedNumerical):
+    # pylint: disable=abstract-method
+    __metaclass__ = ABCMeta
+    sign_signature = "s"
+
+    @classmethod
+    def reminder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("rem", a, b, scope)
+
+    @classmethod
+    def right_shift(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("sar", a, b, scope)
+
+
+class QBEUnsignedInteger(QBEInteger):
+    # pylint: disable=abstract-method
+    __metaclass__ = ABCMeta
+    sign_signature = "u"
+
+    @classmethod
+    def reminder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("urem", a, b, scope)
+
+    @classmethod
+    def right_shift(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.bin_op("shr", a, b, scope)
+
+
+class QBEi64(QBESignedInteger, I64):
     signature = "l"
 
 
-class QBEi32(QBEInteger, I32):
+class QBEi32(QBESignedInteger, I32):
     signature = "w"
 
 
@@ -233,32 +280,19 @@ class QBE(GenBackend):
     def assignment(
         scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
     ) -> ImmediateResult:
-        typ = QBE.type_implementations[typ]
-        return ImmediateResult(expr.var, expr.ir + typ.assign(name, expr.var, scope).ir)
+        return QBE.type_implementations[typ].assign(name, expr, scope)
 
     @staticmethod
     def logical_connective(
-        scope: Scope, op: TokenKind, left: ImmediateResult, right: ImmediateResult
+        scope: Scope,
+        op: TokenKind,
+        left: ImmediateResult,
+        right: ImmediateResult,
+        typ: PrimitiveType,
     ):
-        result_var = scope.temp()
-        resume_label = scope.label()
-        end_label = scope.label()
-
-        match op:
-            case TokenKind.L_AND:
-                jmp = f"jnz %{left.var}, @{resume_label}, @{end_label}"
-            case TokenKind.L_OR:
-                jmp = f"jnz %{left.var}, @{end_label}, @{resume_label}"
-            case _:
-                raise ValueError(f"logical op {op} not supported")
-
-        ir = f"""{left.ir}
-    %{result_var} =l copy %{left.var}
-    {jmp}
-@{resume_label}{right.ir}
-    %{result_var} =l copy %{right.var}
-@{end_label}"""
-        return ImmediateResult(result_var, ir)
+        typ = QBE.type_implementations[typ]
+        func = typ.binary_op_func(op)
+        return func(left, right, scope)
 
     @staticmethod
     def unary_op(
@@ -269,9 +303,7 @@ class QBE(GenBackend):
     ):
         typ = QBE.type_implementations[typ]
         func = typ.unary_op_func(op)
-        (var, ir) = func(expr.var, scope)
-        ir = expr.ir + ir
-        return ImmediateResult(var, ir)
+        return func(expr, scope)
 
     @staticmethod
     def binary_op(
@@ -283,9 +315,7 @@ class QBE(GenBackend):
     ):
         typ = QBE.type_implementations[typ]
         func = typ.binary_op_func(op)
-        (var, ir) = func(left.var, right.var, scope)
-        ir = left.ir + right.ir + ir
-        return ImmediateResult(var, ir)
+        return func(left, right, scope)
 
     @staticmethod
     def if_expr(scope: Scope, arms: list[IfArm]) -> ImmediateResult:
