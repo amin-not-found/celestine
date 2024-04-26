@@ -3,9 +3,7 @@ from enum import Enum, auto
 from typing import Optional, NamedTuple
 
 
-class Type:
-    __metaclass__ = ABCMeta
-
+class Type(metaclass=ABCMeta):
     @property
     @staticmethod
     @abstractmethod

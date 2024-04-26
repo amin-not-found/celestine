@@ -3,7 +3,7 @@ from typing import NamedTuple, TextIO, Optional
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
 from scope import Scope, ScopeType, VariableRedeclareError
 import ast_nodes as ast
-from type import PrimitiveType, I32, I64
+from type import PrimitiveType, NumericalType, I32, I64, F32, F64
 
 
 expr_precedences = {
@@ -26,6 +26,7 @@ expr_precedences = {
     TokenKind.ASTERISK: 10,
     TokenKind.SLASH: 10,
     TokenKind.PERCENT: 10,
+    TokenKind.AS: 11,
 }
 
 statement_exprs = (
@@ -33,7 +34,7 @@ statement_exprs = (
     ast.WhileExpr,
 )
 
-primitive_types = {"i32": I32, "i64": I64}
+primitive_types = {"i32": I32, "i64": I64, "f32": F32, "f64": F64}
 
 
 class Diagnostic(NamedTuple):
@@ -159,13 +160,16 @@ class Parser:
         typ = primitive_types.get(token.lexeme)
 
         if typ is None:
-            self.error(token.offset, f"Unknown type {token.lexeme}.")
-
+            self.sync_error(token.offset, f"Unknown type {token.lexeme}.")
         return typ
 
     def integer(self, scope: Scope):
         token = self.advance()
         return ast.IntLiteral(token.lexeme, scope)
+
+    def float(self, scope: Scope):
+        token = self.advance()
+        return ast.FloatLiteral(token.lexeme, scope)
 
     def variable(self, scope: Scope):
         # TODO : error if uninitialized
@@ -174,11 +178,9 @@ class Parser:
         state = scope.var_state(name)
 
         if state is None:
-            return self.sync_error(token.offset, f"Undefined identifier '{name}'.")
-        mut = state.mutable
-        typ = state.type
+            self.sync_error(token.offset, f"Undefined identifier '{name}'.")
 
-        return ast.Variable(name, scope, mut, typ)
+        return ast.Variable(name, scope, state.type)
 
     def unary_op(self, scope: Scope):
         op = self.advance()
@@ -187,7 +189,7 @@ class Parser:
         if not issubclass(expr.type, PrimitiveType):
             self.error(expr.offset, "Operators are only supported for primitive types")
 
-        if op.kind not in expr.type().unary_operators:
+        if op.kind not in expr.type.unary_operators:
             self.error(
                 op.offset, f"Operator {op.kind.name} is not supported by {expr.type}"
             )
@@ -242,11 +244,30 @@ class Parser:
         right = self.expr(scope, expr_precedences[op.kind])
         return ast.BinaryOp(op.kind, left, right, scope)
 
+    def cast(self, op: Token, expr: ast.Expr, scope: Scope):
+        typ = self.type()
+
+        if not issubclass(expr.type, NumericalType):
+            self.error(
+                op.offset, "Casting is only supported for numerical primitive types."
+            )
+
+        if not issubclass(typ, NumericalType):
+            self.error(op.offset, "Casting to non numerical type.")
+
+        if typ == expr.type:
+            self.error(op.offset, "Pointless casting to the same type.")
+
+        return ast.Cast(expr, scope, typ)
+
     def infix(self, op: Token, left: ast.Expr, scope: Scope):
         self.advance()
 
-        if op.kind == TokenKind.ASSIGNMENT:
-            return self.assignment(op, left, scope)
+        match op.kind:
+            case TokenKind.ASSIGNMENT:
+                return self.assignment(op, left, scope)
+            case TokenKind.AS:
+                return self.cast(op, left, scope)
 
         right = self.expr(scope, expr_precedences[op.kind])
 
@@ -348,7 +369,13 @@ class Parser:
 
         try:
             match token.kind:
-                case TokenKind.PUTCHAR | TokenKind.RETURN:
+                case TokenKind.PUTCHAR:
+                    stmt = self.simple_statement(scope)
+                    if stmt.expr.type != I32:
+                        self.error(
+                            token.offset, "Putchar only accepts 32 bit integers."
+                        )
+                case TokenKind.RETURN:
                     stmt = self.simple_statement(scope)
                 case TokenKind.LET:
                     stmt = self.var_declare(scope)
@@ -390,6 +417,7 @@ class Parser:
 
     prefix_parse_functions = {
         TokenKind.INTEGER: integer,
+        TokenKind.FLOAT: float,
         TokenKind.LEFT_PAREN: group,
         TokenKind.MINUS: unary_op,
         TokenKind.BANG: unary_op,

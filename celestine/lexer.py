@@ -36,12 +36,14 @@ class TokenKind(Enum):
     NE = auto()
     # Literals
     INTEGER = auto()
+    FLOAT = auto()
     # Keywords
     PUTCHAR = auto()  # TODO : remove in future
     FUNCTION = auto()
     RETURN = auto()
     LET = auto()
     MUT = auto()
+    AS = auto()
     IF = auto()
     ELSE = auto()
     WHILE = auto()
@@ -104,6 +106,7 @@ class Lexer(Iterator):
         "return": TokenKind.RETURN,
         "let": TokenKind.LET,
         "mut": TokenKind.MUT,
+        "as": TokenKind.AS,
         "if": TokenKind.IF,
         "else": TokenKind.ELSE,
         "while": TokenKind.WHILE,
@@ -157,8 +160,8 @@ class Lexer(Iterator):
 
         if kind is None:
             self._back_char()
-            if c.isdigit():
-                return self.parse_int()
+            if c.isdigit() or c == ".":
+                return self.parse_number()
             if c.isalpha() or c == "_":
                 return self.parse_id()
             raise UnrecognizedToken(c)
@@ -197,15 +200,27 @@ class Lexer(Iterator):
         """Get next token"""
         return next(self)
 
-    def parse_int(self) -> Token:
+    def parse_number(self) -> Token:
         pos = self._position
+
         s = []
+        is_float = False
+
         while (c := self._forward_char()).isdigit():
             s.append(c)
+
+        if c == ".":
+            is_float = True
+            s.append(c)
+            while (c := self._forward_char()).isdigit():
+                s.append(c)
+
         self._back_char()
         s = "".join(s)
 
-        return Token(TokenKind.INTEGER, pos, s)
+        kind = TokenKind.FLOAT if is_float else TokenKind.INTEGER
+
+        return Token(kind, pos, s)
 
     def parse_id(self) -> Token:
         pos = self._position

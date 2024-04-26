@@ -4,11 +4,10 @@ from dataclasses import dataclass
 from lexer import TokenKind
 from scope import Scope, Type
 from gen import GenBackend, ImmediateResult, IfArm
-from type import PrimitiveType, I32
+from type import PrimitiveType, NumericalType, I32, F32
 
 
-class AST:
-    __metaclass__ = ABCMeta  # pylint only works correctly like this
+class AST(metaclass=ABCMeta):
     type: Type | None = None
 
     @abstractmethod
@@ -21,33 +20,54 @@ class AST:
 
 
 @dataclass
-class IntLiteral(AST):
+class Literal(AST, metaclass=ABCMeta):
     lexeme: str
     scope: Scope
-    type = I32
 
-    def __post_init__(self):
-        assert self.lexeme.isdigit()
+    @property
+    @abstractmethod
+    def type(self) -> PrimitiveType: ...
 
     def to_ir(self, gen: GenBackend):
-        return gen.int_literal(self.scope, self.lexeme)
+        return gen.literal(self.scope, self.type, self.lexeme)
 
     def __repr__(self) -> str:
-        return f"IntLiteral({self.lexeme})"
+        return f"{self.__class__.__name__}({self.lexeme})"
+
+
+class IntLiteral(Literal):
+    type = I32
+
+
+class FloatLiteral(Literal):
+    type = F32
 
 
 @dataclass
 class Variable(AST):
     name: str
     scope: Scope
-    mutable: bool
     type: Type
 
     def __repr__(self) -> str:
-        return f"Variable(name={self.name})"
+        return f"Identifier(name={self.name})"
 
     def to_ir(self, gen: GenBackend):
-        return gen.var(self.scope, self.name)
+        return gen.var(self.scope, self.name, self.type)
+
+
+@dataclass
+class Cast(AST):
+    expr: "Expr"
+    scope: Scope
+    type: NumericalType
+
+    def __repr__(self) -> str:
+        return f"Cast(expr={self.expr}, to={self.type})"
+
+    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+        expr = self.expr.to_ir(gen)
+        return gen.cast(self.scope, expr, self.expr.type, self.type)
 
 
 @dataclass
@@ -89,10 +109,6 @@ class BinaryOp(AST):
                 return gen.logical_connective(
                     self.scope, self.op, self.left.to_ir(gen), right, self.type
                 )
-            case TokenKind.L_AND | TokenKind.L_OR:
-                return gen.logical_connective(
-                    self.scope, self.op, self.left.to_ir(gen), right
-                )
             case _:
                 return gen.binary_op(
                     self.scope, self.op, self.type, self.left.to_ir(gen), right
@@ -110,7 +126,7 @@ class IfExpr(AST):
     def __repr__(self) -> str:
         res = [""]
         for arm in self.arms:
-            res.append(f"({arm.cond}, {arm.body})")
+            res.append(f"({arm[0]}, {arm[1]})")
         res = "\n        ".join(res)
         return f"IfExpr({res})"
 
@@ -142,7 +158,7 @@ class WhileExpr(AST):
         return gen.while_expr(self.scope, self.cond.to_ir(gen), self.body.to_ir(gen))
 
 
-Expr = IntLiteral | Variable | UnaryOp | BinaryOp | IfExpr | WhileExpr
+Expr = IntLiteral | Variable | Cast | UnaryOp | BinaryOp | IfExpr | WhileExpr
 
 
 @dataclass

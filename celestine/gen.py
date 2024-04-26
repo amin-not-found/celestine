@@ -3,7 +3,16 @@ from abc import abstractmethod, ABCMeta
 
 from lexer import TokenKind
 from scope import Scope
-from type import ImmediateResult, PrimitiveType, Integer, I64, I32, NumericalType
+from type import (
+    ImmediateResult,
+    PrimitiveType,
+    NumericalType,
+    Integer,
+    I32,
+    I64,
+    F32,
+    F64,
+)
 
 
 class IfArm(NamedTuple):
@@ -15,14 +24,12 @@ def gen_method(func):
     return staticmethod(abstractmethod(func))
 
 
-class GenBackend:
+class GenBackend(metaclass=ABCMeta):
     # pylint: disable=unused-argument
-    __metaclass__ = ABCMeta
-
     type_implementations: dict[PrimitiveType, PrimitiveType]
 
     @gen_method
-    def int_literal(scope: Scope, integer_str: str) -> ImmediateResult: ...
+    def literal(scope: Scope, typ: PrimitiveType, value: str) -> ImmediateResult: ...
 
     @gen_method
     def unary_op(
@@ -35,6 +42,11 @@ class GenBackend:
     @gen_method
     def assignment(
         scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
+    ) -> ImmediateResult: ...
+
+    @gen_method
+    def cast(
+        scope: Scope, expr: ImmediateResult, from_: NumericalType, to: NumericalType
     ) -> ImmediateResult: ...
 
     @gen_method
@@ -64,7 +76,7 @@ class GenBackend:
     ) -> ImmediateResult: ...
 
     @gen_method
-    def var(scope: Scope, name: str) -> ImmediateResult: ...
+    def var(scope: Scope, name: str, typ: PrimitiveType) -> ImmediateResult: ...
 
     @gen_method
     def putchar(expr: ImmediateResult, typ: Integer) -> ImmediateResult: ...
@@ -93,18 +105,35 @@ class IfLabels(NamedTuple):
     else_: Optional[str]
 
 
-class QBENumerical(NumericalType):
-    __metaclass__ = ABCMeta
-
+class QBENumerical(NumericalType, metaclass=ABCMeta):
     @property
     @abstractmethod
     def signature(self) -> str: ...
 
+    @property
+    @abstractmethod
+    def sign_signature(self) -> str: ...
+
     @classmethod
-    def assign(cls, name: str, a: ImmediateResult, scope: Scope):
+    def store(cls, name: str, a: ImmediateResult, scope: Scope):
         var_signature = scope.var_signature(name)
         return ImmediateResult(
             a.var, a.ir + f"\n    store{cls.signature} %{a.var}, {var_signature}"
+        )
+
+    @classmethod
+    def load(cls, name: str, scope: Scope):
+        var_signature = scope.var_signature(name)
+        var = scope.temp()
+        return ImmediateResult(
+            var, f"\n    %{var} ={cls.signature} load{cls.signature} {var_signature}"
+        )
+
+    @classmethod
+    def convert(cls, instruction: str, value: ImmediateResult, scope: Scope):
+        var = scope.temp()
+        return ImmediateResult(
+            var, value.ir + f"\n    %{var} ={cls.signature} {instruction} %{value.var}"
         )
 
     @classmethod
@@ -117,6 +146,14 @@ class QBENumerical(NumericalType):
             + b.ir
             + f"\n    %{res} ={cls.signature} {instruction} %{a.var}, %{b.var}"
         )
+        return ImmediateResult(res, ir)
+
+    @classmethod
+    def logic_bin_op(
+        cls, instruction: str, a: ImmediateResult, b: ImmediateResult, scope: Scope
+    ):
+        res = scope.temp()
+        ir = a.ir + b.ir + f"\n    %{res} =w {instruction} %{a.var}, %{b.var}"
         return ImmediateResult(res, ir)
 
     @classmethod
@@ -140,20 +177,30 @@ class QBENumerical(NumericalType):
 
     @classmethod
     def eq(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        return cls.bin_op(f"ceq{cls.signature}", a, b, scope)
+        return cls.logic_bin_op(f"ceq{cls.signature}", a, b, scope)
 
     @classmethod
     def ne(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        return cls.bin_op(f"cne{cls.signature}", a, b, scope)
+        return cls.logic_bin_op(f"cne{cls.signature}", a, b, scope)
+
+    @classmethod
+    def gt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.logic_bin_op(f"c{cls.sign_signature}gt{cls.signature}", a, b, scope)
+
+    @classmethod
+    def lt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.logic_bin_op(f"c{cls.sign_signature}lt{cls.signature}", a, b, scope)
+
+    @classmethod
+    def ge(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.logic_bin_op(f"c{cls.sign_signature}ge{cls.signature}", a, b, scope)
+
+    @classmethod
+    def le(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+        return cls.logic_bin_op(f"c{cls.sign_signature}le{cls.signature}", a, b, scope)
 
 
-class QBESignedNumerical(QBENumerical):
-    # pylint: disable=abstract-method
-    __metaclass__ = ABCMeta
-
-    @property
-    @abstractmethod
-    def sign_signature(self) -> str: ...
+class QBESignedNumerical(QBENumerical, metaclass=ABCMeta):
 
     @classmethod
     def negative(cls, a: ImmediateResult, scope: Scope):
@@ -166,26 +213,12 @@ class QBESignedNumerical(QBENumerical):
     def divide(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op("div", a, b, scope)
 
+
+class QBEInteger(QBENumerical, metaclass=ABCMeta):
     @classmethod
-    def gt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        return cls.bin_op(f"c{cls.sign_signature}gt{cls.signature}", a, b, scope)
-
-    @classmethod
-    def lt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        return cls.bin_op(f"c{cls.sign_signature}lt{cls.signature}", a, b, scope)
-
-    @classmethod
-    def ge(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        return cls.bin_op(f"c{cls.sign_signature}ge{cls.signature}", a, b, scope)
-
-    @classmethod
-    def le(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        return cls.bin_op(f"c{cls.sign_signature}le{cls.signature}", a, b, scope)
-
-
-class QBEInteger(QBENumerical):
-    # pylint: disable=abstract-method
-    __metaclass__ = ABCMeta
+    def assign(cls, value: str, scope: Scope):
+        var = scope.temp()
+        return ImmediateResult(var, f"\n    %{var} ={cls.signature} copy {value}")
 
     @classmethod
     def bit_and(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
@@ -232,13 +265,22 @@ class QBEInteger(QBENumerical):
         return ImmediateResult(res, ir)
 
 
-class QBESignedInteger(QBEInteger, QBESignedNumerical):
-    # pylint: disable=abstract-method
-    __metaclass__ = ABCMeta
+class QBEFloat(QBESignedNumerical, metaclass=ABCMeta):
+    sign_signature = ""
+
+    @classmethod
+    def assign(cls, value: str, scope: Scope):
+        var = scope.temp()
+        return ImmediateResult(
+            var, f"\n    %{var} ={cls.signature} copy {cls.signature}_{value}"
+        )
+
+
+class QBESignedInteger(QBEInteger, QBESignedNumerical, metaclass=ABCMeta):
     sign_signature = "s"
 
     @classmethod
-    def reminder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def remainder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op("rem", a, b, scope)
 
     @classmethod
@@ -246,13 +288,11 @@ class QBESignedInteger(QBEInteger, QBESignedNumerical):
         return cls.bin_op("sar", a, b, scope)
 
 
-class QBEUnsignedInteger(QBEInteger):
-    # pylint: disable=abstract-method
-    __metaclass__ = ABCMeta
+class QBEUnsignedInteger(QBEInteger, metaclass=ABCMeta):
     sign_signature = "u"
 
     @classmethod
-    def reminder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def remainder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
         return cls.bin_op("urem", a, b, scope)
 
     @classmethod
@@ -263,24 +303,95 @@ class QBEUnsignedInteger(QBEInteger):
 class QBEi64(QBESignedInteger, I64):
     signature = "l"
 
+    @classmethod
+    def from_i32(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("extsw", value, scope)
+
+    @classmethod
+    def from_f32(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("stosi", value, scope)
+
+    @classmethod
+    def from_f64(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("dtosi", value, scope)
+
 
 class QBEi32(QBESignedInteger, I32):
     signature = "w"
 
+    @classmethod
+    def from_i64(cls, value: ImmediateResult, scope: Scope):
+        return value
+
+    @classmethod
+    def from_f32(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("stosi", value, scope)
+
+    @classmethod
+    def from_f64(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("dtosi", value, scope)
+
+
+class QBEf32(QBEFloat, F32):
+    signature = "s"
+
+    @classmethod
+    def from_i32(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("swtof", value, scope)
+
+    @classmethod
+    def from_i64(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("sltof", value, scope)
+
+    @classmethod
+    def from_f64(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("truncd", value, scope)
+
+
+class QBEf64(QBEFloat, F64):
+    signature = "d"
+
+    @classmethod
+    def from_i32(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("swtof", value, scope)
+
+    @classmethod
+    def from_i64(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("sltof", value, scope)
+
+    @classmethod
+    def from_f32(cls, value: ImmediateResult, scope: Scope):
+        return cls.convert("exts", value, scope)
+
 
 class QBE(GenBackend):
-    type_implementations = {I64: QBEi64, I32: QBEi32}
+    type_implementations = {I64: QBEi64, I32: QBEi32, F32: QBEf32, F64: QBEf64}
 
     @staticmethod
-    def int_literal(scope: Scope, integer_str: str) -> ImmediateResult:
-        var_name = scope.temp()
-        return ImmediateResult(var_name, f"\n    %{var_name} =l copy {integer_str}")
+    def literal(scope: Scope, typ: PrimitiveType, value: str) -> ImmediateResult:
+        typ = QBE.type_implementations[typ]
+        return typ.assign(value, scope)
 
     @staticmethod
     def assignment(
         scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
     ) -> ImmediateResult:
-        return QBE.type_implementations[typ].assign(name, expr, scope)
+        return QBE.type_implementations[typ].store(name, expr, scope)
+
+    @staticmethod
+    def cast(
+        scope: Scope, expr: ImmediateResult, from_: NumericalType, to: NumericalType
+    ) -> ImmediateResult:
+        typ: NumericalType = QBE.type_implementations[to]
+        if (from_) == I32:
+            return typ.from_i32(expr, scope)
+        if (from_) == I64:
+            return typ.from_i64(expr, scope)
+        if (from_) == F32:
+            return typ.from_f32(expr, scope)
+        if (from_) == F64:
+            return typ.from_f64(expr, scope)
+        raise ValueError("Unreachable")
 
     @staticmethod
     def logical_connective(
@@ -344,6 +455,8 @@ class QBE(GenBackend):
             ir.append(f"\n@{labels.start}")
             ir.append(arm.body.ir)
             ir.append(f"\n    jmp @{end_label}")
+        else:
+            ir.append(f"\n@{else_label}")
 
         ir.append(f"\n@{end_label}")
         res_var = scope.temp()
@@ -372,10 +485,9 @@ class QBE(GenBackend):
         return ImmediateResult(res_var, ir)
 
     @staticmethod
-    def var(scope: Scope, name: str) -> ImmediateResult:
-        temp_var = scope.temp()
-        signature = scope.var_signature(name)
-        return ImmediateResult(temp_var, f"\n    %{temp_var} =l loadl {signature}")
+    def var(scope: Scope, name: str, typ: PrimitiveType) -> ImmediateResult:
+        typ = QBE.type_implementations[typ]
+        return typ.load(name, scope)
 
     @staticmethod
     def putchar(expr: ImmediateResult, typ: Integer) -> ImmediateResult:
@@ -403,7 +515,7 @@ class QBE(GenBackend):
 
     @staticmethod
     def function(scope: Scope, name: str, body: ImmediateResult) -> ImmediateResult:
-        top = f"\nexport function l ${name}() {{\n@start"
+        top = f"\nexport function w ${name}() {{\n@start"
         bottom = "\n}\n"
         return ImmediateResult(None, top + body.ir + bottom)
 

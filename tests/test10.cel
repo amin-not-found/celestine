@@ -1,0 +1,33 @@
+// Heron's method for calculating square root:
+// calculates and prints sqrt(2)
+function main(): i32 = {
+    let zero = 48;
+
+    let n = 2.0;
+    let mut x = 1.0;
+    let mut i = 0;
+
+    while i < 5 {
+        x = 0.5 * (x + n/x);
+        i = i + 1;
+    }
+    
+    // print x to 5th decimal place
+    let mut temp = 0;  
+    i = 0;
+    while i < 6 {
+        let temp_x = x as i32 - temp * 10;
+        putchar temp_x + zero;
+
+        temp = temp * 10 + temp_x;
+        x = x * 10.0;
+        i = i + 1;
+        
+        if i == 1 {
+            putchar 46; // dot
+        }
+    }
+
+    putchar 10;
+    return 0;
+}

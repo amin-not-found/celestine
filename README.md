@@ -64,16 +64,17 @@ You can do these operations in an expression:
 |-------------|-----------------------------------------|----------
 |`-`          | Negative number                         | 1
 |`!`          | Logical not                             | 1
-|`*`, `/`, `%`| Multiplication, division, and remainder | 2
-|`+`, `-`     | Addition and subtraction                | 3
-|`<<`, `>>`   | Bitwise left and right shift            | 4
-|`&`          | Bitwise AND                             | 5
-|`^`          | Bitwise XOR                             | 6
-|`\|`         | Bitwise OR                              | 7
-|`==`, `!=`, `<`, `>`, `<=`, `>=`| Comparison           | 8
-|`\|\|`       | Logical AND                             | 9
-|`&&`         | Logical OR                              | 10  
-|`=`          | Assignment                              | 11
+|`as`         | Type casting between numbers            | 2
+|`*`, `/`, `%`| Multiplication, division, and remainder | 3
+|`+`, `-`     | Addition and subtraction                | 4
+|`<<`, `>>`   | Bitwise left and right shift            | 5
+|`&`          | Bitwise AND                             | 6
+|`^`          | Bitwise XOR                             | 7
+|`\|`         | Bitwise OR                              | 8
+|`==`, `!=`, `<`, `>`, `<=`, `>=`| Comparison           | 9
+|`\|\|`       | Logical AND                             | 10
+|`&&`         | Logical OR                              | 1  
+|`=`          | Assignment                              | 12
 
 Also you can group operations with parenthesis.
 
@@ -99,7 +100,7 @@ if x % 2 == 0 {
 }
 ```
 #### Loops
-Only while loop is supported at the moment. Example:
+Only while loop is supported at the moment. While is an expression and return 0 as of now just like if. Example:
 ```ts
 // prints a pyramid pattern
 function main(): i32 = {
@@ -134,4 +135,16 @@ Also it's worth noting that variable assignment is an expression and returns the
 let mut x;
 let y = x = 10;
 putchar y; // prints newline
+```
+### Data types
+Currently only builtin primitive types are supported
+
+#### Primitive types
+Integer and floating points of 32 and 64 bit size are available. They're  called `i32`, `i64` , `f32` , `f64`. Integer and float literals have types of `i32` and `f32`. Also you can cast between these types using `as` keyword:
+```rust
+let a = 4;              // i32
+let b = 1.6;            // f32
+let c = (a as f32) * b; // f32
+putchar c as i32 + 48;  
+// prints '6' as c truncates to 6 in conversion and 48 is ascii code fore 0
 ```

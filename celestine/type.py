@@ -17,9 +17,7 @@ BinaryOperator = Callable[
 ]
 
 
-class PrimitiveType:
-    __metaclass__ = ABCMeta
-
+class PrimitiveType(metaclass=ABCMeta):
     unary_operators: dict[TokenKind, UnaryOperator] = {}
     binary_operators: dict[TokenKind, BinaryOperator] = {}
 
@@ -33,12 +31,18 @@ class PrimitiveType:
 
     @classmethod
     @abstractmethod
-    def assign(cls, name: str, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
+    def assign(cls, value: str, scope: Scope) -> ImmediateResult: ...
+
+    @classmethod
+    @abstractmethod
+    def store(cls, name: str, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
+
+    @classmethod
+    @abstractmethod
+    def load(cls, name: str, scope: Scope) -> ImmediateResult: ...
 
 
-class NumericalType(PrimitiveType):
-    __metaclass__ = ABCMeta
-
+class NumericalType(PrimitiveType, metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def negative(cls, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
@@ -109,6 +113,7 @@ class NumericalType(PrimitiveType):
     }
     binary_operators = {
         **PrimitiveType.binary_operators,
+        TokenKind.AS: "cast",
         TokenKind.PLUS: "add",
         TokenKind.MINUS: "subtract",
         TokenKind.ASTERISK: "multiply",
@@ -122,9 +127,7 @@ class NumericalType(PrimitiveType):
     }
 
 
-class Integer(NumericalType):
-    __metaclass__ = ABCMeta
-
+class Integer(NumericalType, metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def logical_not(cls, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
@@ -143,7 +146,7 @@ class Integer(NumericalType):
 
     @classmethod
     @abstractmethod
-    def reminder(
+    def remainder(
         cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
     ) -> ImmediateResult: ...
 
@@ -186,7 +189,7 @@ class Integer(NumericalType):
         **NumericalType.binary_operators,
         TokenKind.L_AND: "logical_or",
         TokenKind.L_OR: "logical_and",
-        TokenKind.PERCENT: "reminder",
+        TokenKind.PERCENT: "remainder",
         TokenKind.AMPERSAND: "bit_and",
         TokenKind.V_BAR: "bit_or",
         TokenKind.CARET: "bit_xor",
@@ -195,13 +198,73 @@ class Integer(NumericalType):
     }
 
 
-class I32(Integer):
-    # pylint: disable=abstract-method
-    __metaclass__ = ABCMeta
+class Float(NumericalType, metaclass=ABCMeta):
+    pass
+
+
+class I32(Integer, metaclass=ABCMeta):
+    final_type = True
     size = 4
 
+    @classmethod
+    @abstractmethod
+    def from_i64(cls, value: ImmediateResult, scope: Scope): ...
 
-class I64(Integer):
-    # pylint: disable=abstract-method
-    __metaclass__ = ABCMeta
+    @classmethod
+    @abstractmethod
+    def from_f32(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_f64(cls, value: ImmediateResult, scope: Scope): ...
+
+
+class I64(Integer, metaclass=ABCMeta):
+    final_type = True
     size = 8
+
+    @classmethod
+    @abstractmethod
+    def from_i32(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_f32(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_f64(cls, value: ImmediateResult, scope: Scope): ...
+
+
+class F32(Float, metaclass=ABCMeta):
+    final_type = True
+    size = 4
+
+    @classmethod
+    @abstractmethod
+    def from_i32(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_i64(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_f64(cls, value: ImmediateResult, scope: Scope): ...
+
+
+class F64(Float, metaclass=ABCMeta):
+    final_type = True
+    size = 8
+
+    @classmethod
+    @abstractmethod
+    def from_i32(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_i64(cls, value: ImmediateResult, scope: Scope): ...
+
+    @classmethod
+    @abstractmethod
+    def from_f32(cls, value: ImmediateResult, scope: Scope): ...

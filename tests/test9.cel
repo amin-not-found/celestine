@@ -1,4 +1,16 @@
 function main(): i32 = {
-    putchar (6.0) as i32 + 48;
+    let word  : i32 = 1;
+    let long  : i64 = 10 as i64;
+    let single: f32 = 0.1;
+    let double: f64 = 0.2 as f64;
+
+    // 123456
+    putchar (single * long as f32) as i32 + 48;                 
+    putchar (double * 10 as f64) as i32 + 48;          
+    putchar ((single as i64) + (3 as i64)) as i32 + 48; 
+    putchar (word as f32 * double as f32  * 20.0) as i32 + 48;
+    putchar ((double * (long * 2 as i64) as f64) as i64 + (word as i64)) as i32 + 48; 
+    putchar (word as f64 * 6.0 as f64) as i32 + 48;
+    putchar 10;
     return 0;
 }
