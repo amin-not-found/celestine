@@ -88,7 +88,7 @@ class Parser:
                 return self._last_token
             except UnrecognizedToken as e:
                 self.sync_error(
-                    self.lexer.text, f"Syntax Error: Unexpected '{e.text}'."
+                    self.lexer.offset, f"Syntax Error: Unexpected '{e.text}'."
                 )
 
     def peek(self) -> Token:
@@ -115,7 +115,7 @@ class Parser:
         self.diagnostics.append(Diagnostic(msg, self.lexer.text, offset))
 
     def sync_error(self, offset: int, msg: str) -> None:
-        self.diagnostics.append(Diagnostic(msg, self.lexer.text, offset))
+        self.error(offset, msg)
         self.synchronize()
         raise ParseError()
 
@@ -232,13 +232,17 @@ class Parser:
 
     def assignment(self, op: Token, left: ast.Expr, scope: Scope):
         if not isinstance(left, ast.Variable):
-            self.error(op.offset, "Left side of assignment should be an identifier.")
+            self.sync_error(
+                op.offset, "Left side of assignment should be an identifier."
+            )
 
         var_state = scope.var_state(left.name)
 
         if not var_state:
-            self.error(op.offset, f"Assigning to undeclared variable {left.name}.")
-        elif not var_state.mutable:
+            raise ValueError(
+                "Unreachable: should have been caught while parsing variable"
+            )
+        if not var_state.mutable:
             self.error(op.offset, f"Cannot assign to immutable variable {left.name}")
 
         right = self.expr(scope, expr_precedences[op.kind])
@@ -304,7 +308,7 @@ class Parser:
 
         token = self.advance()
         if token.kind != TokenKind.IDENTIFIER:
-            return self.error(token.offset, "Expected an identifier.")
+            return self.sync_error(token.offset, "Expected an identifier.")
         name = token.lexeme
 
         annotated_type = None
@@ -320,6 +324,9 @@ class Parser:
             self.advance()
             expr = self.expr(scope)
             expr_type = expr.type
+
+        if expr is None and not mutable:
+            self.error(token.offset, f"Initialized immutable variable {name}")
 
         typ = expr_type or annotated_type
 
@@ -358,8 +365,15 @@ class Parser:
 
         self.expect_token(TokenKind.LEFT_BRACE)
 
-        while self.peek().kind != TokenKind.RIGHT_BRACE:
-            body.append(self.statement(scope))
+        while True:
+            try:
+                token = self.peek()
+                if token.kind == TokenKind.RIGHT_BRACE:
+                    break
+                body.append(self.statement(scope))
+                token = self.peek()
+            except ParseError:
+                pass
 
         self.expect_token(TokenKind.RIGHT_BRACE)
         return ast.Block(body, scope)
@@ -367,22 +381,17 @@ class Parser:
     def statement(self, scope: Scope) -> ast.Statement:
         token = self.peek()
 
-        try:
-            match token.kind:
-                case TokenKind.PUTCHAR:
-                    stmt = self.simple_statement(scope)
-                    if stmt.expr.type != I32:
-                        self.error(
-                            token.offset, "Putchar only accepts 32 bit integers."
-                        )
-                case TokenKind.RETURN:
-                    stmt = self.simple_statement(scope)
-                case TokenKind.LET:
-                    stmt = self.var_declare(scope)
-                case _:
-                    stmt = self.expr(scope)
-        except ParseError:
-            return None
+        match token.kind:
+            case TokenKind.PUTCHAR:
+                stmt = self.simple_statement(scope)
+                if stmt.expr.type != I32:
+                    self.error(token.offset, "Putchar only accepts 32 bit integers.")
+            case TokenKind.RETURN:
+                stmt = self.simple_statement(scope)
+            case TokenKind.LET:
+                stmt = self.var_declare(scope)
+            case _:
+                stmt = self.expr(scope)
 
         if not (isinstance(stmt, ast.Expr) and isinstance(stmt, statement_exprs)):
             self.expect_token(TokenKind.SEMICOLON)

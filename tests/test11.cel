@@ -1,0 +1,26 @@
+function main(): i64 = {
+    ~
+    putchar 18;
+    let a = 0;
+    a = 1;
+    let a = 2;
+    let mut b;
+    let c: i64 = 3;
+    let d: i33;
+    4 = a;
+    let e: = 5;
+    f = 6;
+    let g: i32;
+    putchar (!7.0) as i32;
+    putchar 8 as i32;
+    putchar (9.0 % 10) as i32;
+    putchar n + 11;
+    putchar 12.0; 
+    putchar 
+    putchar 13;
+    let 14 = 15;
+    putchar 16;
+    putchar a
+    putchar 17;
+    return 0;
+}

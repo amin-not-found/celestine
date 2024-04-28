@@ -1,6 +1,5 @@
 #!/usr/bin/sh
-TESTS_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/tests"
-TEMP_FILE="${TESTS_DIR}/temp"
+TEMP_FILE="./temp"
 
 
 succuess () {
@@ -11,16 +10,18 @@ failure () {
    echo -e "${test_file}:\e[31m Failed \e[0m"
 }
 
+# Change to the directory containting this script
+cd "$(dirname "$0")"
 
-for test_file in $(ls ${TESTS_DIR}/test*.cel); do
+for test_file in $(ls ./tests/test*.cel); do
     test_name="${test_file##*/}"
     test_name="${test_name%.*}"
 
-    test_res="${TESTS_DIR}/results/${test_name}"
+    test_res="./tests/results/${test_name}"
     [ ! -f "$test_res" ] && echo -e "\e[33mTest result for ${test_file} doesn't exist\e[0m" && continue
 
-    ${TESTS_DIR}/../celestine/main.py -r "$test_file" > "$TEMP_FILE"
-    rm "${TESTS_DIR}/${test_name}.out"
+    ./celestine/main.py -r "$test_file" > "$TEMP_FILE" 2>&1
+    if [[ "$?" == 0 ]]; then rm "./tests/${test_name}.out"; fi
 
     if cmp -- "$TEMP_FILE" "$test_res"; then
         succuess "$test_file"
@@ -29,7 +30,7 @@ for test_file in $(ls ${TESTS_DIR}/test*.cel); do
     fi
 done
 
-for test_file in $(ls ${TESTS_DIR}/test*.py); do
+for test_file in $(ls ./tests/test*.py); do
     ${test_file}
 
     if [[ "$?" == 0 ]]; then

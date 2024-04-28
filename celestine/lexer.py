@@ -164,6 +164,7 @@ class Lexer(Iterator):
                 return self.parse_number()
             if c.isalpha() or c == "_":
                 return self.parse_id()
+            self._forward_char()
             raise UnrecognizedToken(c)
 
         return Token(kind, self._position, c)
