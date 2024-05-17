@@ -23,6 +23,7 @@ class IncrementalGen:
 class ScopeType(Enum):
     GLOBAL = auto()
     FUNC = auto()
+    FUNC_ARG = auto()
     BLOCK = auto()
 
 
@@ -105,6 +106,9 @@ class Scope:
             raise VariableRedeclareError()
         self._vars[name] = VariableState(mut, self._var(), self._kind, typ)
 
+    def declare_arg(self, name: str, typ: Type, mut: bool):
+        self._vars[name] = VariableState(mut, self._var(), ScopeType.FUNC_ARG, typ)
+
     def var_state(self, name: str) -> Optional[VariableState]:
         state = self._vars.get(name)
 
@@ -119,7 +123,7 @@ class Scope:
     def var_signature(self, name: str):
         var = self.var_state(name)
         match var.level:
-            case ScopeType.FUNC | ScopeType.BLOCK:
+            case ScopeType.FUNC | ScopeType.BLOCK | ScopeType.FUNC_ARG:
                 return f"%{var.address}"
             case ScopeType.GLOBAL:
                 return NotImplementedError("Global variables not implemented")

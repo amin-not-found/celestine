@@ -1,4 +1,3 @@
-tests/test11.cel:1:10: Error: Main function has to return i32.
 tests/test11.cel:2:6: Error: Syntax Error: Unexpected '~'.
 tests/test11.cel:5:8: Error: Cannot assign to immutable variable a
 tests/test11.cel:6:12: Error: Declaration of existing variable 'a'.
@@ -19,3 +18,4 @@ tests/test11.cel:18:5: Error: Putchar only accepts 32 bit integers.
 tests/test11.cel:20:5: Error: Unexpected 'putchar' while parsing expression.
 tests/test11.cel:21:9: Error: Expected an identifier.
 tests/test11.cel:24:5: Error: Expected 'semicolon' but got 'putchar'.
+tests/test11.cel:1:1: Error: Main function has to return i32.

@@ -1,0 +1,12 @@
+function add(a:i32, b: i32,): i32 = {
+    return a+b;
+}
+function sub(x:f32, y: f32): f32 = {
+    return x-y;
+}
+
+function main(): i32 = {
+    putchar add(1,2,) + 48;
+    putchar sub(5.4,3.4) as i32 + 48;
+    return 0;
+}

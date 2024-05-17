@@ -33,14 +33,6 @@ class PrimitiveType(metaclass=ABCMeta):
     @abstractmethod
     def assign(cls, value: str, scope: Scope) -> ImmediateResult: ...
 
-    @classmethod
-    @abstractmethod
-    def store(cls, name: str, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
-
-    @classmethod
-    @abstractmethod
-    def load(cls, name: str, scope: Scope) -> ImmediateResult: ...
-
 
 class NumericalType(PrimitiveType, metaclass=ABCMeta):
     @classmethod

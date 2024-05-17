@@ -1,0 +1,27 @@
+function put_digit(n: i32): i32 = {
+    if n > 9 {
+        return -1;
+    }
+    putchar n + 48;
+    putchar 10;
+    return 0;
+}
+
+function gcd(a: i32, b: i32): i32 = {
+    // calculate GCD using Euclid's algorithm
+    if b == 0 {
+        return a;
+    }
+
+    return gcd(b, a%b);
+}
+
+function main(): i32 = {
+    put_digit(gcd(3,2));
+    put_digit(gcd(4,6));
+    put_digit(gcd(6,4));
+    put_digit(gcd(132, 164));
+    put_digit(gcd(96, 3162));
+    put_digit(gcd(8, 8));
+    return 0;
+}

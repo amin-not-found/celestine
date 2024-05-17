@@ -1,7 +1,7 @@
 # Celestine
 Celestine is my experimental programming language. I first started with the idea of improving C but it's getting a bit far away from just that.
 
-As of now, Celestine is in early development and it's only supported on 64-bit linux.
+As of now, Celestine is in early development and it's only supported on 64-bit linux. For a guide on language, see [design section](#design).
 Here's an example of a program written in Celestine:
 ```rust
 function main(): i32 = {
@@ -42,20 +42,20 @@ options:
 ```
 
 ## Design
-Celestine tries to be a low level system programming language that has support for a subset of modern language features but doesn't stray much far from C.
+Celestine tries to be a low level system programming language with support for some modern programming features but retain some form of simplicity similar to C.
 
-A Celestine program consists of a main function which itself is made os statements. Every statement ends with a semicolon(`;`). There are two kinds of statements as of right now:
+A Celestine program consists of a main function which itself is made of statements. Every statement ends with a semicolon(`;`). There are four kinds of statements as of right now:
 1. putchar which prints given a number prints it's corresponding ASCII character. It exists as a way to test the language and will be removed or replaced ved with a function in the future.
 2. return which ends the function returning the given number.
 3. Variable declaration(read about [variables](#variables))
-4. Expression statement 
+4. Expressions as statements
 
 ### Comments
 Single lined comments are denoted by usage of `//`.
 As of right now, there's no support other types of comments.
 
 ### Expressions
-Statements accept expressions and as of right now only 64-bit integers are supported and every expression evaluates to an integer.
+Statements accept expressions and expression is a piece of code that returns a value. Here I talk about different types of expressions in Celestine starting with expressions that use operators.
 
 #### Operators
 
@@ -148,3 +148,26 @@ let c = (a as f32) * b; // f32
 putchar c as i32 + 48;  
 // prints '6' as c truncates to 6 in conversion and 48 is ascii code fore 0
 ```
+
+### Functions
+Function definition syntax is as:
+```
+function name(arg1: type,...): return_type = {
+    // body
+}
+```
+As an example you can define function `add` like this:
+```rust
+function add(a: i32, b: i32): i32 = {
+    return a + b;
+}
+```
+and then call it:
+```rust
+add(2,2); // returns 4
+```
+Trailing commas inside function definitions and calls is permitted; So this also works:
+```rust
+add(2,2,);
+```
+Please note that there's no void or none type as of now so all functions must return a value.

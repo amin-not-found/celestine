@@ -1,7 +1,7 @@
 from typing import NamedTuple, TextIO, Optional
 
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
-from scope import Scope, ScopeType, VariableRedeclareError
+from scope import Type, Scope, ScopeType, VariableRedeclareError
 import ast_nodes as ast
 from type import PrimitiveType, NumericalType, I32, I64, F32, F64
 
@@ -34,7 +34,12 @@ statement_exprs = (
     ast.WhileExpr,
 )
 
-primitive_types = {"i32": I32, "i64": I64, "f32": F32, "f64": F64}
+primitive_types: dict[str, PrimitiveType] = {
+    "i32": I32,
+    "i64": I64,
+    "f32": F32,
+    "f64": F64,
+}
 
 
 class Diagnostic(NamedTuple):
@@ -75,6 +80,7 @@ class Parser:
     def __init__(self, lexer: Lexer) -> None:
         self.lexer = lexer
         self.diagnostics: list[Diagnostic] = []
+        self.definitions: ast.Definitions = dict()
         self._last_token: Optional[Token] = None
         self._peeked = False
 
@@ -171,16 +177,84 @@ class Parser:
         token = self.advance()
         return ast.FloatLiteral(token.lexeme, scope)
 
+    def identifier(self, scope: Scope):
+        token = self.peek()
+        name = token.lexeme
+
+        var_state = scope.var_state(name)
+        if var_state is not None:
+            return self.variable(scope)
+
+        definition = self.definitions.get(name)
+
+        if definition is None:
+            self.sync_error(token.offset, f"Undefined identifier '{name}'.")
+
+        match definition.kind:
+            case ast.DefinitionKind.FUNC:
+                return self.func_call(scope)
+            case _:
+                raise ValueError(f"Can't parse {definition.kind}")
+
     def variable(self, scope: Scope):
         # TODO : error if uninitialized
         token = self.advance()
         name = token.lexeme
         state = scope.var_state(name)
-
-        if state is None:
-            self.sync_error(token.offset, f"Undefined identifier '{name}'.")
-
         return ast.Variable(name, scope, state.type)
+
+    def func_params(self, scope: Scope):
+        params: list[ast.Expr] = []
+
+        if self.peek().kind == TokenKind.RIGHT_PAREN:
+            return params
+
+        while True:
+            params.append(self.expr(scope))
+            token = self.peek()
+            match token.kind:
+                case TokenKind.RIGHT_PAREN:
+                    break
+                case TokenKind.COMMA:
+                    self.advance()
+                    if self.peek().kind == TokenKind.RIGHT_PAREN:
+                        break
+                    continue
+                case _:
+                    self.sync_error(
+                        token.offset,
+                        "Expected comma or right parenthesis"
+                        " at end of function parameter.",
+                    )
+
+        return params
+
+    def func_call(self, scope: Scope):
+        name_token = self.expect_token(TokenKind.IDENTIFIER)
+        self.expect_token(TokenKind.LEFT_PAREN)
+
+        params = self.func_params(scope)
+        self.expect_token(TokenKind.RIGHT_PAREN)
+
+        definition: ast.Function = self.definitions[name_token.lexeme].body
+        args = definition.arguments
+
+        if len(params) != len(args):
+            self.error(
+                name_token.offset,
+                "Incorrect number of arguments supplied "
+                f"while calling {name_token.lexeme}",
+            )
+
+        for i, (param, arg) in enumerate(zip(params, args)):
+            if param.type != arg[1]:
+                self.error(
+                    name_token.offset,
+                    f"Incorrect argument type for argument number {i+1} "
+                    f"while calling {name_token.lexeme}",
+                )
+
+        return ast.FuncCall(name_token.lexeme, params, scope, definition.type)
 
     def unary_op(self, scope: Scope):
         op = self.advance()
@@ -397,32 +471,81 @@ class Parser:
             self.expect_token(TokenKind.SEMICOLON)
         return stmt
 
+    def func_args(self, scope: Scope):
+        args: list[tuple[str, Type]] = []
+
+        if self.peek().kind == TokenKind.RIGHT_PAREN:
+            return args
+
+        while True:
+            arg = self.expect_token(TokenKind.IDENTIFIER).lexeme
+            self.expect_token(TokenKind.COLON)
+            typ = self.type()
+            scope.declare_arg(arg, typ, True)
+            args.append((arg, typ))
+
+            token = self.peek()
+            match token.kind:
+                case TokenKind.RIGHT_PAREN:
+                    break
+                case TokenKind.COMMA:
+                    self.advance()
+                    if self.peek().kind == TokenKind.RIGHT_PAREN:
+                        break
+                    continue
+                case _:
+                    self.sync_error(
+                        token.offset,
+                        "Expected comma or right parenthesis"
+                        " at end of function argument.",
+                    )
+        return args
+
     def function(self, scope: Scope):
         scope = Scope(ScopeType.FUNC, scope)
 
-        # For now we only parse a main function that has no arguments
-        # TODO : handle errors when function parsing became more sophisticated
         self.expect_token(TokenKind.FUNCTION)
-        name = self.expect_token(TokenKind.IDENTIFIER)
-        assert name.lexeme == "main"
+        name = self.expect_token(TokenKind.IDENTIFIER).lexeme
         self.expect_token(TokenKind.LEFT_PAREN)
-        self.expect_token(TokenKind.RIGHT_PAREN)
-        self.expect_token(TokenKind.COLON)
 
+        arguments = self.func_args(scope)
+        self.expect_token(TokenKind.RIGHT_PAREN)
+
+        self.expect_token(TokenKind.COLON)
         typ = self.type()
-        if typ != I32:
-            self.error(name.offset, "Main function has to return i32.")
+
+        # we define our function without body
+        # so it's possible to call the function inside its own body
+        func = ast.Function(name, None, arguments, scope, typ)
+        self.definitions[name] = ast.Definition(func, ast.DefinitionKind.FUNC)
 
         self.expect_token(TokenKind.ASSIGNMENT)
+        func.body = self.block(scope)
 
-        body = self.block(scope)
-        return ast.Function(name.lexeme, body, scope, I32)
+        return func
 
     def program(self, scope: Scope):
-        try:
-            return ast.Program(self.function(scope), scope)
-        except ParseError:
-            return None
+        while True:
+            try:
+                self.peek()
+            except StopIteration:
+                break
+
+            try:
+                func = self.function(scope)
+                self.definitions[func.name] = ast.Definition(
+                    func, ast.DefinitionKind.FUNC
+                )
+            except ParseError:
+                return None
+
+        main = self.definitions.get("main")
+        if main is None or main.kind != ast.DefinitionKind.FUNC:
+            self.error(0, "Program doesn't have a main function")
+        elif main.body.type != I32:
+            self.error(0, "Main function has to return i32.")
+
+        return ast.Program(self.definitions, scope)
 
     prefix_parse_functions = {
         TokenKind.INTEGER: integer,
@@ -430,7 +553,7 @@ class Parser:
         TokenKind.LEFT_PAREN: group,
         TokenKind.MINUS: unary_op,
         TokenKind.BANG: unary_op,
-        TokenKind.IDENTIFIER: variable,
+        TokenKind.IDENTIFIER: identifier,
         TokenKind.IF: if_expr,
         TokenKind.WHILE: while_expr,
     }

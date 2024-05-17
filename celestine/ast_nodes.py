@@ -1,5 +1,7 @@
 from abc import abstractmethod, ABCMeta
 from dataclasses import dataclass
+from typing import NamedTuple
+from enum import Enum, auto
 
 from lexer import TokenKind
 from scope import Scope, Type
@@ -17,6 +19,21 @@ class AST(metaclass=ABCMeta):
     def to_ir(self, gen: GenBackend) -> ImmediateResult:
         """Returns a tuple of possible temporary variable name
         for result of expression and the immediate representation string"""
+
+
+class DefinitionKind(Enum):
+    FUNC = auto()
+
+
+class Definition(NamedTuple):
+    body: AST
+    kind: DefinitionKind
+
+    def __repr__(self):
+        return str(self.body)
+
+
+Definitions = dict[str, Definition]
 
 
 @dataclass
@@ -50,7 +67,7 @@ class Variable(AST):
     type: Type
 
     def __repr__(self) -> str:
-        return f"Identifier(name={self.name})"
+        return f"Variable(name={self.name})"
 
     def to_ir(self, gen: GenBackend):
         return gen.var(self.scope, self.name, self.type)
@@ -158,7 +175,23 @@ class WhileExpr(AST):
         return gen.while_expr(self.scope, self.cond.to_ir(gen), self.body.to_ir(gen))
 
 
-Expr = IntLiteral | Variable | Cast | UnaryOp | BinaryOp | IfExpr | WhileExpr
+@dataclass
+class FuncCall(AST):
+    function_name: str
+    parameters: list["Expr"]
+    scope: Scope
+    type: Type
+
+    def __repr__(self) -> str:
+        args = ", ".join(map(str, self.parameters))
+        return f"FunctionCall(function={self.function_name}, args={args})"
+
+    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+        params = [(param.to_ir(gen), param.type) for param in self.parameters]
+        return gen.func_call(self.scope, self.function_name, params, self.type)
+
+
+Expr = IntLiteral | Variable | Cast | UnaryOp | BinaryOp | IfExpr | WhileExpr | FuncCall
 
 
 @dataclass
@@ -221,23 +254,29 @@ class Block(AST):
 class Function(AST):
     name: str
     body: Block
+    arguments: list[tuple[str, Type]]
     scope: Scope
     type: Type
 
     def __repr__(self) -> str:
-        return f"Function(name={self.name}, body={self.body}\n  )\n"
+        args = ", ".join(f"{arg}={typ.__name__}" for arg, typ in self.arguments)
+        return f"Function(name={self.name}, args=({args}), body={self.body}\n  )"
 
     def to_ir(self, gen: GenBackend):
-        return gen.function(self.scope, self.name, self.body.to_ir(gen))
+        return gen.function(
+            self.scope, self.name, self.arguments, self.body.to_ir(gen), self.type
+        )
 
 
 @dataclass
 class Program(AST):
-    main: Function
+    definitions: Definitions
     scope: Scope
 
     def __repr__(self) -> str:
-        return f"Program({self.main})"
+        functions = "\n  ".join(str(body) for _, body in self.definitions.items())
+        return f"Program({functions})"
 
     def to_ir(self, gen: GenBackend):
-        return gen.program(self.scope, self.main.to_ir(gen))
+        functions = [f.body.to_ir(gen) for f in self.definitions.values()]
+        return gen.program(self.scope, functions)

@@ -58,6 +58,7 @@ disable=missing-docstring,
         raise-missing-from,
         too-many-public-methods,
         too-few-public-methods,
+        too-many-ancestors,
         use-dict-literal, # I like dict() more than {} as it's explicit
         #raw-checker-failed,
         #bad-inline-option,

@@ -12,6 +12,7 @@ class TokenKind(Enum):
     RIGHT_BRACE = auto()
     SEMICOLON = auto()
     COLON = auto()
+    COMMA = auto()
     COMMENT = auto()
     ASSIGNMENT = auto()
     PLUS = auto()
@@ -70,6 +71,7 @@ class Lexer(Iterator):
         "}": TokenKind.RIGHT_BRACE,
         ";": TokenKind.SEMICOLON,
         ":": TokenKind.COLON,
+        ",": TokenKind.COMMA,
         "=": TokenKind.ASSIGNMENT,
         "+": TokenKind.PLUS,
         "-": TokenKind.MINUS,
