@@ -12,7 +12,7 @@ class ImmediateResult(NamedTuple):
 
 UnaryOperator = Callable[["PrimitiveType", str, Scope], ImmediateResult]
 BinaryOperator = Callable[
-    ["PrimitiveType", ImmediateResult, ImmediateResult, Scope],
+    ["PrimitiveType", str, str, Scope],
     ImmediateResult,
 ]
 
@@ -37,67 +37,47 @@ class PrimitiveType(metaclass=ABCMeta):
 class NumericalType(PrimitiveType, metaclass=ABCMeta):
     @classmethod
     @abstractmethod
-    def negative(cls, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
+    def negative(cls, a: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def add(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def add(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def subtract(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def subtract(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def multiply(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def multiply(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def divide(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def divide(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def gt(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def gt(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def lt(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def lt(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def ge(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def ge(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def le(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def le(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def eq(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def eq(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def ne(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def ne(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     unary_operators: dict = {
         **PrimitiveType.unary_operators,
@@ -122,55 +102,31 @@ class NumericalType(PrimitiveType, metaclass=ABCMeta):
 class Integer(NumericalType, metaclass=ABCMeta):
     @classmethod
     @abstractmethod
-    def logical_not(cls, a: ImmediateResult, scope: Scope) -> ImmediateResult: ...
+    def logical_not(cls, a: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def logical_or(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def remainder(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def logical_and(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def bit_and(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def remainder(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def bit_or(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def bit_and(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def bit_xor(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def bit_or(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def left_shift(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     @classmethod
     @abstractmethod
-    def bit_xor(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
-
-    @classmethod
-    @abstractmethod
-    def left_shift(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
-
-    @classmethod
-    @abstractmethod
-    def right_shift(
-        cls, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ) -> ImmediateResult: ...
+    def right_shift(cls, a: str, b: str, scope: Scope) -> ImmediateResult: ...
 
     unary_operators: dict = {
         **NumericalType.unary_operators,
@@ -179,8 +135,8 @@ class Integer(NumericalType, metaclass=ABCMeta):
 
     binary_operators = {
         **NumericalType.binary_operators,
-        TokenKind.L_AND: "logical_or",
-        TokenKind.L_OR: "logical_and",
+        TokenKind.L_AND: None,
+        TokenKind.L_OR: None,
         TokenKind.PERCENT: "remainder",
         TokenKind.AMPERSAND: "bit_and",
         TokenKind.V_BAR: "bit_or",
@@ -200,15 +156,15 @@ class I32(Integer, metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def from_i64(cls, value: ImmediateResult, scope: Scope): ...
+    def from_i64(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_f32(cls, value: ImmediateResult, scope: Scope): ...
+    def from_f32(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_f64(cls, value: ImmediateResult, scope: Scope): ...
+    def from_f64(cls, var: str, scope: Scope): ...
 
 
 class I64(Integer, metaclass=ABCMeta):
@@ -217,15 +173,15 @@ class I64(Integer, metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def from_i32(cls, value: ImmediateResult, scope: Scope): ...
+    def from_i32(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_f32(cls, value: ImmediateResult, scope: Scope): ...
+    def from_f32(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_f64(cls, value: ImmediateResult, scope: Scope): ...
+    def from_f64(cls, var: str, scope: Scope): ...
 
 
 class F32(Float, metaclass=ABCMeta):
@@ -234,15 +190,15 @@ class F32(Float, metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def from_i32(cls, value: ImmediateResult, scope: Scope): ...
+    def from_i32(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_i64(cls, value: ImmediateResult, scope: Scope): ...
+    def from_i64(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_f64(cls, value: ImmediateResult, scope: Scope): ...
+    def from_f64(cls, var: str, scope: Scope): ...
 
 
 class F64(Float, metaclass=ABCMeta):
@@ -251,12 +207,12 @@ class F64(Float, metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def from_i32(cls, value: ImmediateResult, scope: Scope): ...
+    def from_i32(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_i64(cls, value: ImmediateResult, scope: Scope): ...
+    def from_i64(cls, var: str, scope: Scope): ...
 
     @classmethod
     @abstractmethod
-    def from_f32(cls, value: ImmediateResult, scope: Scope): ...
+    def from_f32(cls, var: str, scope: Scope): ...

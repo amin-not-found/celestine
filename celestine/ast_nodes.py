@@ -5,7 +5,7 @@ from enum import Enum, auto
 
 from lexer import TokenKind
 from scope import Scope, Type
-from gen import GenBackend, ImmediateResult, IfArm
+from gen import GenBackend, GenResult, IfArm
 from type import PrimitiveType, NumericalType, I32, F32
 
 
@@ -16,7 +16,7 @@ class AST(metaclass=ABCMeta):
     def __repr__(self) -> str: ...
 
     @abstractmethod
-    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+    def to_ir(self, gen: GenBackend) -> GenResult:
         """Returns a tuple of possible temporary variable name
         for result of expression and the immediate representation string"""
 
@@ -45,7 +45,7 @@ class Literal(AST, metaclass=ABCMeta):
     @abstractmethod
     def type(self) -> PrimitiveType: ...
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.literal(self.scope, self.type, self.lexeme)
 
     def __repr__(self) -> str:
@@ -69,7 +69,7 @@ class Variable(AST):
     def __repr__(self) -> str:
         return f"Variable(name={self.name})"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.var(self.scope, self.name, self.type)
 
 
@@ -82,7 +82,7 @@ class Cast(AST):
     def __repr__(self) -> str:
         return f"Cast(expr={self.expr}, to={self.type})"
 
-    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+    def to_ir(self, gen: GenBackend) -> GenResult:
         expr = self.expr.to_ir(gen)
         return gen.cast(self.scope, expr, self.expr.type, self.type)
 
@@ -99,7 +99,7 @@ class UnaryOp(AST):
     def __repr__(self) -> str:
         return f"UnaryOp(op={self.op}, expr={self.expr})"
 
-    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+    def to_ir(self, gen: GenBackend) -> GenResult:
         expr = self.expr.to_ir(gen)
         return gen.unary_op(self.scope, self.op, self.type, expr)
 
@@ -117,7 +117,7 @@ class BinaryOp(AST):
     def __repr__(self):
         return f"BinaryOp(op={self.op}, left={self.left}, right={self.right})"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         right = self.right.to_ir(gen)
         match self.op:
             case TokenKind.ASSIGNMENT:
@@ -147,7 +147,7 @@ class IfExpr(AST):
         res = "\n        ".join(res)
         return f"IfExpr({res})"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         arms = []
         for arm in self.arms:
             cond = arm[0]
@@ -171,7 +171,7 @@ class WhileExpr(AST):
         body = str(self.body).replace("\n", "\n    ")
         return f"WhileExpr({self.cond}, {body})"
 
-    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+    def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.while_expr(self.scope, self.cond.to_ir(gen), self.body.to_ir(gen))
 
 
@@ -186,7 +186,7 @@ class FuncCall(AST):
         args = ", ".join(map(str, self.parameters))
         return f"FunctionCall(function={self.function_name}, args={args})"
 
-    def to_ir(self, gen: GenBackend) -> ImmediateResult:
+    def to_ir(self, gen: GenBackend) -> GenResult:
         params = [(param.to_ir(gen), param.type) for param in self.parameters]
         return gen.func_call(self.scope, self.function_name, params, self.type)
 
@@ -203,7 +203,7 @@ class SimpleStatement(AST):
     def __repr__(self) -> str:
         return f"{self.kind.name}({self.expr}),"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         expr = self.expr.to_ir(gen)
         match self.kind:
             case TokenKind.PUTCHAR:
@@ -224,9 +224,9 @@ class VariableDeclare(AST):
     def __repr__(self) -> str:
         return f"VariableDeclare(name={self.name}, expr={self.expr}),"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         if self.expr is None:
-            return ImmediateResult(None, "")
+            return GenResult(gen)
         return gen.var_declare(
             self.scope, self.name, self.var_type, self.expr.to_ir(gen)
         )
@@ -246,7 +246,7 @@ class Block(AST):
     def __repr__(self) -> str:
         return "\n    " + "\n    ".join(map(str, self.body))
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.block(self.scope, [stmt.to_ir(gen) for stmt in self.body])
 
 
@@ -262,7 +262,7 @@ class Function(AST):
         args = ", ".join(f"{arg}={typ.__name__}" for arg, typ in self.arguments)
         return f"Function(name={self.name}, args=({args}), body={self.body}\n  )"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.function(
             self.scope, self.name, self.arguments, self.body.to_ir(gen), self.type
         )
@@ -277,6 +277,6 @@ class Program(AST):
         functions = "\n  ".join(str(body) for _, body in self.definitions.items())
         return f"Program({functions})"
 
-    def to_ir(self, gen: GenBackend):
+    def to_ir(self, gen: GenBackend) -> GenResult:
         functions = [f.body.to_ir(gen) for f in self.definitions.values()]
         return gen.program(self.scope, functions)

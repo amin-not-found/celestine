@@ -15,9 +15,52 @@ from type import (
 )
 
 
+class GenResult:
+    @staticmethod
+    def singular(item: ImmediateResult, gen_backend: "GenBackend"):
+        res = GenResult(gen_backend)
+        res.insert(0, [item])
+        return res
+
+    def __init__(self, backend: "GenBackend") -> None:
+        self.backend = backend
+        self._results: list[ImmediateResult] = []
+
+    def __get_item__(self, index: int) -> ImmediateResult:
+        return self._results[index]
+
+    def __len__(self):
+        return len(self._results)
+
+    def results(self):
+        return self._results.copy()
+
+    def last(self):
+        return self._results[-1]
+
+    def append_ir(self, result: ImmediateResult):
+        self.insert(len(self), [result])
+
+    def append(self, var: str, ir: str):
+        self.append_ir(ImmediateResult(var, ir))
+
+    def append_str(self, ir: str):
+        self.append(None, ir)
+
+    def insert(self, index, results: list[ImmediateResult]):
+        for i, res in enumerate(results):
+            self._results.insert(index + i, res)
+
+    def concat(self, other: "GenResult"):
+        self.insert(len(self), other.results())
+
+    def pop(self, index: int):
+        self._results.pop(index)
+
+
 class IfArm(NamedTuple):
-    cond: ImmediateResult
-    body: ImmediateResult
+    cond: GenResult
+    body: GenResult
 
 
 def gen_method(func):
@@ -29,88 +72,86 @@ class GenBackend(metaclass=ABCMeta):
     type_implementations: dict[PrimitiveType, PrimitiveType]
 
     @gen_method
-    def literal(scope: Scope, typ: PrimitiveType, value: str) -> ImmediateResult: ...
+    def literal(scope: Scope, typ: PrimitiveType, value: str) -> GenResult: ...
 
     @gen_method
     def unary_op(
         scope: Scope,
         op: TokenKind,
         typ: PrimitiveType,
-        expr: ImmediateResult,
-    ) -> ImmediateResult: ...
+        expr: GenResult,
+    ) -> GenResult: ...
 
     @gen_method
     def assignment(
-        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
-    ) -> ImmediateResult: ...
+        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+    ) -> GenResult: ...
 
     @gen_method
     def cast(
-        scope: Scope, expr: ImmediateResult, from_: NumericalType, to: NumericalType
-    ) -> ImmediateResult: ...
+        scope: Scope, expr: GenResult, from_: NumericalType, to: NumericalType
+    ) -> GenResult: ...
 
     @gen_method
     def logical_connective(
         scope: Scope,
         op: TokenKind,
-        left: ImmediateResult,
-        right: ImmediateResult,
+        left: GenResult,
+        right: GenResult,
         typ: PrimitiveType,
-    ) -> ImmediateResult: ...
+    ) -> GenResult: ...
 
     @gen_method
     def binary_op(
         scope: Scope,
         op: TokenKind,
         typ: PrimitiveType,
-        left: ImmediateResult,
-        right: ImmediateResult,
-    ) -> ImmediateResult: ...
+        left: GenResult,
+        right: GenResult,
+    ) -> GenResult: ...
 
     @gen_method
-    def if_expr(scope: Scope, arms: list[IfArm]) -> ImmediateResult: ...
+    def if_expr(scope: Scope, arms: list[IfArm]) -> GenResult: ...
 
     @gen_method
-    def while_expr(
-        scope: Scope, cond: ImmediateResult, body: ImmediateResult
-    ) -> ImmediateResult: ...
+    def while_expr(scope: Scope, cond: GenResult, body: GenResult) -> GenResult: ...
 
     @gen_method
-    def var(scope: Scope, name: str, typ: PrimitiveType) -> ImmediateResult: ...
+    def var(scope: Scope, name: str, typ: PrimitiveType) -> GenResult: ...
 
     @gen_method
     def func_call(
         scope: Scope,
         name: str,
-        params: list[tuple[ImmediateResult, Type]],
+        params: list[tuple[GenResult, Type]],
         typ: PrimitiveType,
-    ) -> ImmediateResult: ...
+    ) -> GenResult: ...
 
     @gen_method
-    def putchar(expr: ImmediateResult, typ: Integer) -> ImmediateResult: ...
+    def putchar(expr: GenResult, typ: Integer) -> GenResult: ...
 
     @gen_method
-    def return_stmt(expr: ImmediateResult) -> ImmediateResult: ...
+    def return_stmt(expr: GenResult) -> GenResult: ...
 
     @gen_method
     def var_declare(
-        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
-    ) -> ImmediateResult: ...
+        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+    ) -> GenResult: ...
 
     @gen_method
-    def block(scope: Scope, statements: list[ImmediateResult]) -> ImmediateResult: ...
+    def block(scope: Scope, statements: list[GenResult]) -> GenResult: ...
 
     @gen_method
     def function(
         scope: Scope,
         name: str,
         arguments: list[tuple[str, Type]],
-        body: ImmediateResult,
+        body: GenResult,
         return_type: Type,
-    ) -> ImmediateResult: ...
+    ) -> GenResult: ...
 
     @gen_method
-    def program(scope: Scope, functions: list[ImmediateResult]) -> ImmediateResult: ...
+    def program(scope: Scope, functions: list[GenResult]) -> GenResult: ...
 
 
 class IfLabels(NamedTuple):
@@ -130,93 +171,80 @@ class QBEPrimitiveType(QBEType, PrimitiveType, metaclass=ABCMeta):
 
 
 class QBENumerical(QBEPrimitiveType, NumericalType, metaclass=ABCMeta):
-
     @property
     @abstractmethod
     def sign_signature(self) -> str: ...
 
     @classmethod
-    def convert(cls, instruction: str, value: ImmediateResult, scope: Scope):
-        var = scope.temp()
+    def convert(cls, instruction: str, var: str, scope: Scope):
+        res_var = scope.temp()
         return ImmediateResult(
-            var, value.ir + f"\n    %{var} ={cls.signature} {instruction} %{value.var}"
+            res_var, f"    %{res_var} ={cls.signature} {instruction} %{var}"
         )
 
     @classmethod
-    def bin_op(
-        cls, instruction: str, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ):
-        res = scope.temp()
-        ir = (
-            a.ir
-            + b.ir
-            + f"\n    %{res} ={cls.signature} {instruction} %{a.var}, %{b.var}"
-        )
-        return ImmediateResult(res, ir)
-
-    @classmethod
-    def logic_bin_op(
-        cls, instruction: str, a: ImmediateResult, b: ImmediateResult, scope: Scope
-    ):
-        res = scope.temp()
-        ir = a.ir + b.ir + f"\n    %{res} =w {instruction} %{a.var}, %{b.var}"
-        return ImmediateResult(res, ir)
-
-    @classmethod
-    def logical_not(cls, a: ImmediateResult, scope: Scope):
+    def bin_op(cls, instruction: str, a: str, b: str, scope: Scope):
         res = scope.temp()
         return ImmediateResult(
-            res, a.ir + f"\n    %{res} =l ceq{cls.signature} %{a.var}, 0"
+            res, f"    %{res} ={cls.signature} {instruction} %{a}, %{b}"
         )
 
     @classmethod
-    def add(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def logic_bin_op(cls, instruction: str, a: str, b: str, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(res, f"    %{res} =w {instruction} %{a}, %{b}")
+
+    @classmethod
+    def logical_not(cls, a: str, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(res, f"    %{res} =l ceq{cls.signature} %{a}, 0")
+
+    @classmethod
+    def add(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("add", a, b, scope)
 
     @classmethod
-    def subtract(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def subtract(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("sub", a, b, scope)
 
     @classmethod
-    def multiply(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def multiply(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("mul", a, b, scope)
 
     @classmethod
-    def eq(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def eq(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"ceq{cls.signature}", a, b, scope)
 
     @classmethod
-    def ne(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def ne(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"cne{cls.signature}", a, b, scope)
 
     @classmethod
-    def gt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def gt(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"c{cls.sign_signature}gt{cls.signature}", a, b, scope)
 
     @classmethod
-    def lt(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def lt(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"c{cls.sign_signature}lt{cls.signature}", a, b, scope)
 
     @classmethod
-    def ge(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def ge(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"c{cls.sign_signature}ge{cls.signature}", a, b, scope)
 
     @classmethod
-    def le(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def le(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"c{cls.sign_signature}le{cls.signature}", a, b, scope)
 
 
 class QBESignedNumerical(QBENumerical, metaclass=ABCMeta):
 
     @classmethod
-    def negative(cls, a: ImmediateResult, scope: Scope):
+    def negative(cls, a: str, scope: Scope):
         res = scope.temp()
-        return ImmediateResult(
-            res, a.ir + f"\n    %{res} ={cls.signature} neg %{a.var}"
-        )
+        return ImmediateResult(res, f"    %{res} ={cls.signature} neg %{a}")
 
     @classmethod
-    def divide(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def divide(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("div", a, b, scope)
 
 
@@ -224,51 +252,23 @@ class QBEInteger(QBENumerical, metaclass=ABCMeta):
     @classmethod
     def assign(cls, value: str, scope: Scope):
         var = scope.temp()
-        return ImmediateResult(var, f"\n    %{var} ={cls.signature} copy {value}")
+        return ImmediateResult(var, f"    %{var} ={cls.signature} copy {value}")
 
     @classmethod
-    def bit_and(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def bit_and(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("and", a, b, scope)
 
     @classmethod
-    def bit_or(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def bit_or(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("or", a, b, scope)
 
     @classmethod
-    def bit_xor(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def bit_xor(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("xor", a, b, scope)
 
     @classmethod
-    def left_shift(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def left_shift(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("shl", a, b, scope)
-
-    @classmethod
-    def logical_and(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        res = scope.temp()
-        resume_label = scope.label()
-        end_label = scope.label()
-
-        ir = f"""{a.ir}
-    %{res} =w copy %{a.var}
-    jnz %{a.var}, @{end_label}, @{resume_label}
-@{resume_label}{b.ir}
-    %{res} =w copy %{b.var}
-@{end_label}"""
-        return ImmediateResult(res, ir)
-
-    @classmethod
-    def logical_or(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
-        res = scope.temp()
-        resume_label = scope.label()
-        end_label = scope.label()
-
-        ir = f"""{a.ir}
-    %{res} =w copy %{a.var}
-    jnz %{a.var}, @{resume_label}, @{end_label}
-@{resume_label}{b.ir}
-    %{res} =w copy %{b.var}
-@{end_label}"""
-        return ImmediateResult(res, ir)
 
 
 class QBEFloat(QBESignedNumerical, metaclass=ABCMeta):
@@ -278,7 +278,7 @@ class QBEFloat(QBESignedNumerical, metaclass=ABCMeta):
     def assign(cls, value: str, scope: Scope):
         var = scope.temp()
         return ImmediateResult(
-            var, f"\n    %{var} ={cls.signature} copy {cls.signature}_{value}"
+            var, f"    %{var} ={cls.signature} copy {cls.signature}_{value}"
         )
 
 
@@ -286,11 +286,11 @@ class QBESignedInteger(QBEInteger, QBESignedNumerical, metaclass=ABCMeta):
     sign_signature = "s"
 
     @classmethod
-    def remainder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def remainder(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("rem", a, b, scope)
 
     @classmethod
-    def right_shift(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def right_shift(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("sar", a, b, scope)
 
 
@@ -298,11 +298,11 @@ class QBEUnsignedInteger(QBEInteger, metaclass=ABCMeta):
     sign_signature = "u"
 
     @classmethod
-    def remainder(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def remainder(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("urem", a, b, scope)
 
     @classmethod
-    def right_shift(cls, a: ImmediateResult, b: ImmediateResult, scope: Scope):
+    def right_shift(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("shr", a, b, scope)
 
 
@@ -310,64 +310,64 @@ class QBEi64(QBESignedInteger, I64):
     signature = "l"
 
     @classmethod
-    def from_i32(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("extsw", value, scope)
+    def from_i32(cls, var: str, scope: Scope):
+        return cls.convert("extsw", var, scope)
 
     @classmethod
-    def from_f32(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("stosi", value, scope)
+    def from_f32(cls, var: str, scope: Scope):
+        return cls.convert("stosi", var, scope)
 
     @classmethod
-    def from_f64(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("dtosi", value, scope)
+    def from_f64(cls, var: str, scope: Scope):
+        return cls.convert("dtosi", var, scope)
 
 
 class QBEi32(QBESignedInteger, I32):
     signature = "w"
 
     @classmethod
-    def from_i64(cls, value: ImmediateResult, scope: Scope):
-        return value
+    def from_i64(cls, var: str, scope: Scope):
+        return ImmediateResult(var, "")
 
     @classmethod
-    def from_f32(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("stosi", value, scope)
+    def from_f32(cls, var: str, scope: Scope):
+        return cls.convert("stosi", var, scope)
 
     @classmethod
-    def from_f64(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("dtosi", value, scope)
+    def from_f64(cls, var: str, scope: Scope):
+        return cls.convert("dtosi", var, scope)
 
 
 class QBEf32(QBEFloat, F32):
     signature = "s"
 
     @classmethod
-    def from_i32(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("swtof", value, scope)
+    def from_i32(cls, var: str, scope: Scope):
+        return cls.convert("swtof", var, scope)
 
     @classmethod
-    def from_i64(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("sltof", value, scope)
+    def from_i64(cls, var: str, scope: Scope):
+        return cls.convert("sltof", var, scope)
 
     @classmethod
-    def from_f64(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("truncd", value, scope)
+    def from_f64(cls, var: str, scope: Scope):
+        return cls.convert("truncd", var, scope)
 
 
 class QBEf64(QBEFloat, F64):
     signature = "d"
 
     @classmethod
-    def from_i32(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("swtof", value, scope)
+    def from_i32(cls, var: str, scope: Scope):
+        return cls.convert("swtof", var, scope)
 
     @classmethod
-    def from_i64(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("sltof", value, scope)
+    def from_i64(cls, var: str, scope: Scope):
+        return cls.convert("sltof", var, scope)
 
     @classmethod
-    def from_f32(cls, value: ImmediateResult, scope: Scope):
-        return cls.convert("exts", value, scope)
+    def from_f32(cls, var: str, scope: Scope):
+        return cls.convert("exts", var, scope)
 
 
 class QBE(GenBackend):
@@ -379,73 +379,105 @@ class QBE(GenBackend):
     }
 
     @staticmethod
-    def literal(scope: Scope, typ: PrimitiveType, value: str) -> ImmediateResult:
+    def literal(scope: Scope, typ: PrimitiveType, value: str) -> GenResult:
         typ = QBE.type_implementations[typ]
-        return typ.assign(value, scope)
+        return GenResult.singular(typ.assign(value, scope), QBE)
 
     @staticmethod
     def assignment(
-        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
-    ) -> ImmediateResult:
+        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+    ) -> GenResult:
         typ = QBE.type_implementations[typ]
         var_signature = scope.var_signature(name)
-        return ImmediateResult(
-            expr.var,
-            expr.ir + f"\n    store{typ.signature} %{expr.var}, {var_signature}",
+        expr.append(
+            expr.last().var,
+            f"    store{typ.signature} %{expr.last().var}, {var_signature}",
         )
+        return expr
 
     @staticmethod
     def cast(
-        scope: Scope, expr: ImmediateResult, from_: NumericalType, to: NumericalType
-    ) -> ImmediateResult:
+        scope: Scope, expr: GenResult, from_: NumericalType, to: NumericalType
+    ) -> GenResult:
         typ: NumericalType = QBE.type_implementations[to]
+        var = expr.last().var
         if (from_) == I32:
-            return typ.from_i32(expr, scope)
-        if (from_) == I64:
-            return typ.from_i64(expr, scope)
-        if (from_) == F32:
-            return typ.from_f32(expr, scope)
-        if (from_) == F64:
-            return typ.from_f64(expr, scope)
-        raise ValueError("Unreachable")
+            res = typ.from_i32(var, scope)
+        elif (from_) == I64:
+            res = typ.from_i64(var, scope)
+        elif (from_) == F32:
+            res = typ.from_f32(var, scope)
+        elif (from_) == F64:
+            res = typ.from_f64(var, scope)
+        else:
+            raise ValueError("Unreachable")
+        expr.append_ir(res)
+        return expr
 
     @staticmethod
     def logical_connective(
         scope: Scope,
         op: TokenKind,
-        left: ImmediateResult,
-        right: ImmediateResult,
+        left: GenResult,
+        right: GenResult,
         typ: PrimitiveType,
     ):
-        typ = QBE.type_implementations[typ]
-        func = typ.binary_op_func(op)
-        return func(left, right, scope)
+        res = scope.temp()
+        resume_label = scope.label()
+        end_label = scope.label()
+
+        left.append(res, f"    %{res} =w copy %{left.last().var}")
+
+        match op:
+            case TokenKind.L_OR:
+                left.append_str(
+                    f"    jnz %{left.last().var}, @{end_label}, @{resume_label}"
+                )
+            case TokenKind.L_AND:
+                left.append_str(
+                    f"    jnz %{left.last().var}, @{resume_label}, @{end_label}"
+                )
+            case _:
+                raise ValueError("Should be unreachable")
+
+        left.append_str(f"@{resume_label}")
+        left.concat(right)
+        left.append(res, f"    %{res} =w copy %{right.last().var}")
+        left.append(res, f"@{end_label}")
+
+        return left
 
     @staticmethod
     def unary_op(
         scope: Scope,
         op: TokenKind,
         typ: PrimitiveType,
-        expr: ImmediateResult,
+        expr: GenResult,
     ):
         typ = QBE.type_implementations[typ]
         func = typ.unary_op_func(op)
-        return func(expr, scope)
+        expr.append_ir(func(expr.last().var, scope))
+        return expr
 
     @staticmethod
     def binary_op(
         scope: Scope,
         op: TokenKind,
         typ: PrimitiveType,
-        left: ImmediateResult,
-        right: ImmediateResult,
+        left: GenResult,
+        right: GenResult,
     ):
         typ = QBE.type_implementations[typ]
         func = typ.binary_op_func(op)
-        return func(left, right, scope)
+        left_var = left.last().var
+        right_var = right.last().var
+
+        left.concat(right)
+        left.append_ir(func(left_var, right_var, scope))
+        return left
 
     @staticmethod
-    def if_expr(scope: Scope, arms: list[IfArm]) -> ImmediateResult:
+    def if_expr(scope: Scope, arms: list[IfArm]) -> GenResult:
         assert len(arms) > 0
 
         arm_labels: list[IfLabels] = []
@@ -456,152 +488,165 @@ class QBE(GenBackend):
             arm_labels.append(IfLabels(else_label, scope.label(), scope.label()))
             else_label = arm_labels[-1].else_
 
-        ir: str = []
+        res = GenResult(QBE)
 
         for arm, labels in zip(arms, arm_labels):
-            ir.append(f"\n@{labels.if_}")
+            res.append_str(f"@{labels.if_}")
 
             if arm.cond is None:
                 # Else clause is the only arm without cond
-                ir.append(arm.body.ir)
+                res.concat(arm.body)
                 break
 
-            ir.append(arm.cond.ir)
-            ir.append(f"\n    jnz %{arm.cond.var}, @{labels.start}, @{labels.else_}")
-            ir.append(f"\n@{labels.start}")
-            ir.append(arm.body.ir)
-            if not ir[-1].split("\n")[-1].strip().startswith("ret"):
-                # TODO : Handle this case better
-                ir.append(f"\n    jmp @{end_label}")
+            res.concat(arm.cond)
+            res.append(
+                None,
+                f"    jnz %{arm.cond.last().var}, @{labels.start}, @{labels.else_}",
+            )
+            res.append_str(f"@{labels.start}")
+            res.concat(arm.body)
+            if not res.last().ir.strip().startswith("ret"):
+                res.append_str(f"    jmp @{end_label}")
         else:
-            ir.append(f"\n@{else_label}")
+            res.append_str(f"@{else_label}")
 
-        ir.append(f"\n@{end_label}")
+        res.append_str(f"@{end_label}")
         res_var = scope.temp()
-        ir.append(f"\n    %{res_var} =l copy 0")
-        res_ir = "".join(ir)
-
-        return ImmediateResult(res_var, res_ir)
+        res.append(res_var, f"    %{res_var} =l copy 0")
+        return res
 
     @staticmethod
-    def while_expr(
-        scope: Scope, cond: ImmediateResult, body: ImmediateResult
-    ) -> ImmediateResult:
+    def while_expr(scope: Scope, cond: GenResult, body: GenResult) -> GenResult:
         while_label = scope.label()
         start_label = scope.label()
         end_label = scope.label()
         res_var = scope.temp()
 
-        ir = f"""
-@{while_label}{cond.ir}
-    jnz %{cond.var}, @{start_label}, @{end_label}
-@{start_label}{body.ir}
-    jmp @{while_label}
-@{end_label}
-    %{res_var} =l copy 0"""
+        res = GenResult(QBE)
+        res.append_str(f"@{while_label}")
+        res.concat(cond)
+        res.append_str(f"    jnz %{cond.last().var}, @{start_label}, @{end_label}")
+        res.append_str(f"@{start_label}")
+        res.concat(body)
+        res.append_str(f"jmp @{while_label}")
+        res.append_str(f"@{end_label}")
+        res.append(res_var, f"%{res_var} =l copy 0")
 
-        return ImmediateResult(res_var, ir)
+        return res
 
     @staticmethod
-    def var(scope: Scope, name: str, typ: PrimitiveType) -> ImmediateResult:
+    def var(scope: Scope, name: str, typ: PrimitiveType) -> GenResult:
         typ = QBE.type_implementations[typ]
         var_signature = scope.var_signature(name)
 
         var = scope.temp()
-        return ImmediateResult(
-            var, f"\n    %{var} ={typ.signature} load{typ.signature} {var_signature}"
+        return GenResult.singular(
+            ImmediateResult(
+                var,
+                f"    %{var} ={typ.signature} load{typ.signature} {var_signature}",
+            ),
+            QBE,
         )
 
     @staticmethod
     def func_call(
         scope: Scope,
         name: str,
-        params: list[tuple[ImmediateResult, Type]],
+        params: list[tuple[GenResult, Type]],
         typ: PrimitiveType,
-    ) -> ImmediateResult:
+    ) -> GenResult:
         typ: QBEType = QBE.type_implementations[typ]
         var = scope.temp()
 
         params_ir = []
         for param in params:
             param_typ = QBE.type_implementations[param[1]]
-            params_ir.append(f"{param_typ.signature} %{param[0].var}")
+            params_ir.append(f"{param_typ.signature} %{param[0].last().var}")
 
-        params_ir = "(" + ", ".join(params_ir) + ")"
-        ir = "".join(param[0].ir for param in params)
+        res = GenResult(QBE)
+        for param, _ in params:
+            res.concat(param)
 
-        return ImmediateResult(
-            var, ir + f"\n    %{var} ={typ.signature} call ${name}{params_ir}"
-        )
+        params_ir = ", ".join(params_ir)
+        res.append(var, f"    %{var} ={typ.signature} call ${name}({params_ir})")
+        return res
 
     @staticmethod
-    def putchar(expr: ImmediateResult, typ: Integer) -> ImmediateResult:
+    def putchar(expr: GenResult, typ: Integer) -> GenResult:
         typ = QBE.type_implementations[typ]
-        ir = expr.ir + f"\n    call $putchar({typ.signature} %{expr.var})"
-        return ImmediateResult(None, ir)
+        expr.append_str(f"    call $putchar({typ.signature} %{expr.last().var})")
+        return expr
 
     @staticmethod
-    def return_stmt(expr: ImmediateResult) -> ImmediateResult:
-        return ImmediateResult(None, expr.ir + f"\n    ret %{expr.var}")
+    def return_stmt(expr: GenResult) -> GenResult:
+        expr.append_str(f"    ret %{expr.last().var}")
+        return expr
 
     @staticmethod
     def var_declare(
-        scope: Scope, name: str, typ: PrimitiveType, expr: ImmediateResult
-    ) -> ImmediateResult:
+        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+    ) -> GenResult:
         return QBE.assignment(scope, name, typ, expr)
 
     @staticmethod
-    def block(scope: Scope, statements: list[ImmediateResult]) -> ImmediateResult:
-        body = "".join(
-            f"\n    %{var.address} =l alloc{var.type.size} 8"
-            for _, var in scope.vars()
-            if var.level != ScopeType.FUNC_ARG
-        )
-        body += "".join(stmt.ir for stmt in statements)
-        return ImmediateResult(None, body)
+    def block(scope: Scope, statements: list[GenResult]) -> GenResult:
+        res = GenResult(QBE)
+
+        for _, var in scope.vars():
+            if var.level == ScopeType.FUNC_ARG:
+                continue
+            res.append_str(f"    %{var.address} =l alloc8 {var.type.size}")
+
+        for stmt in statements:
+            res.concat(stmt)
+
+        return res
 
     @staticmethod
     def function(
         scope: Scope,
         name: str,
         arguments: list[tuple[str, Type]],
-        body: ImmediateResult,
+        body: GenResult,
         return_type: Type,
-    ) -> ImmediateResult:
+    ) -> GenResult:
         return_type = QBE.type_implementations[return_type]
-        arg_assigns = []
+        prelude = GenResult(QBE)
         args = []
 
         for arg, typ in arguments:
             temp = scope.temp()
             var_state = scope.var_state(arg)
 
-            arg_assigns.append(f"\n    %{var_state.address} =l alloc{typ.size} 8")
-            arg_assigns.append(
-                QBE.assignment(scope, arg, typ, ImmediateResult(temp, "")).ir
+            prelude.append_str(f"    %{var_state.address} =l alloc8 {typ.size}")
+            prelude.concat(
+                QBE.assignment(
+                    scope, arg, typ, GenResult.singular(ImmediateResult(temp, f"    # param {arg}"), QBE)
+                )
             )
 
             typ = QBE.type_implementations[typ]
             args.append(f"{typ.signature} %{temp}")
 
+        res = GenResult(QBE)
+
         args = ", ".join(args)
-        arg_assigns = "".join(arg_assigns)
+        res.append_str(
+            f"export function {return_type.signature} ${name}({args}) {{\n@start"
+        )
+        res.concat(prelude)
+        res.concat(body)
 
-        top = f"\nexport function {return_type.signature} ${name}({args}) {{\n@start"
-        body = body.ir
-        bottom = "\n    \n}\n"
+        if not res.last().ir.strip().startswith("ret"):
+            res.append_str("    ret")
 
-        if not body.split("\n")[-1].strip().startswith("ret"):
-            # TODO : handle this situation better
-            body = body + "\nret"
-
-        return ImmediateResult(None, top + arg_assigns + body + bottom)
+        res.append_str("}\n")
+        return res
 
     @staticmethod
-    def program(scope: Scope, functions: list[ImmediateResult]) -> ImmediateResult:
-        functions = "".join(f.ir for f in functions)
-        return ImmediateResult(
-            None,
+    def program(scope: Scope, functions: list[GenResult]) -> GenResult:
+        res = GenResult(QBE)
+        res.append_str(
             """
 function w $pushchar(w %c) { \n\
 @start 
@@ -610,5 +655,7 @@ function w $pushchar(w %c) { \n\
     %b =w call $write(w 1, w %a, w 1) \n\
     ret %b \n\
 } \n"""
-            + functions,
         )
+        for func in functions:
+            res.concat(func)
+        return res

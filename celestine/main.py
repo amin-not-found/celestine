@@ -36,9 +36,10 @@ def compile_file(args: Namespace) -> Path:
     if args.print:
         print(program)
 
-    gen = QBE()
+    gen = QBE
     with open(ssa_file, "w", encoding="UTF-8") as f:
-        f.write(program.to_ir(gen).ir)
+        ir = program.to_ir(gen)
+        f.writelines(line + "\n" for _, line in ir.results())
 
     run(
         ["qbe", "-o", asm_file, ssa_file],
