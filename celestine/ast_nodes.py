@@ -28,6 +28,7 @@ class DefinitionKind(Enum):
 class Definition(NamedTuple):
     body: AST
     kind: DefinitionKind
+    src_offset: int
 
     def __repr__(self):
         return str(self.body)

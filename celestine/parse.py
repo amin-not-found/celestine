@@ -499,7 +499,7 @@ class Parser:
         scope = Scope(ScopeType.FUNC, scope)
 
         self.expect_token(TokenKind.FUNCTION)
-        name = self.expect_token(TokenKind.IDENTIFIER).lexeme
+        name = self.expect_token(TokenKind.IDENTIFIER)
         self.expect_token(TokenKind.LEFT_PAREN)
 
         arguments = self.func_args(scope)
@@ -510,8 +510,8 @@ class Parser:
 
         # we define our function without body
         # so it's possible to call the function inside its own body
-        func = ast.Function(name, None, arguments, scope, typ)
-        self.definitions[name] = ast.Definition(func, ast.DefinitionKind.FUNC)
+        func = ast.Function(name.lexeme, None, arguments, scope, typ)
+        self.definitions[name.lexeme] = ast.Definition(func, ast.DefinitionKind.FUNC, 0)
 
         self.expect_token(TokenKind.ASSIGNMENT)
         func.body = self.block(scope)
@@ -526,9 +526,10 @@ class Parser:
                 break
 
             try:
+                token = self.peek()
                 func = self.function(scope)
                 self.definitions[func.name] = ast.Definition(
-                    func, ast.DefinitionKind.FUNC
+                    func, ast.DefinitionKind.FUNC, token.offset
                 )
             except ParseError:
                 return None
@@ -537,7 +538,7 @@ class Parser:
         if main is None or main.kind != ast.DefinitionKind.FUNC:
             self.error(0, "Program doesn't have a main function")
         elif main.body.type != I32:
-            self.error(0, "Main function has to return i32.")
+            self.error(main.src_offset, "Main function has to return i32.")
 
         return ast.Program(self.definitions, scope)
 
