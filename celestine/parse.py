@@ -29,11 +29,6 @@ expr_precedences = {
     TokenKind.AS: 11,
 }
 
-statement_exprs = (
-    ast.IfExpr,
-    ast.WhileExpr,
-)
-
 primitive_types: dict[str, PrimitiveType] = {
     "i32": I32,
     "i64": I64,
@@ -467,8 +462,7 @@ class Parser:
             case _:
                 stmt = self.expr(scope)
 
-        if not (isinstance(stmt, ast.Expr) and isinstance(stmt, statement_exprs)):
-            self.expect_token(TokenKind.SEMICOLON)
+        self.expect_token(TokenKind.SEMICOLON)
         return stmt
 
     def func_args(self, scope: Scope):

@@ -11,7 +11,7 @@ function main(): i32 = {
         putchar 1+z;
     } else {
         putchar q_mark;
-    } // "?"
+    }; // "?"
 
     x = 1;
     x = if x == 0 {
@@ -20,7 +20,7 @@ function main(): i32 = {
             putchar 1+z;
         } else {
             putchar q_mark;
-        }; // "1", also assigns zero to x
+    }; // "1", also assigns zero to x
 
     if x == 0 {
         putchar 0+z;
@@ -28,7 +28,7 @@ function main(): i32 = {
         putchar 1+z;
     } else {
         putchar q_mark;
-    } // "?"
+    }; // "?"
 
     putchar 10;
     return 0;

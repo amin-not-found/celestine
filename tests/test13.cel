@@ -1,7 +1,7 @@
 function put_digit(n: i32): i32 = {
     if n > 9 {
         return -1;
-    }
+    };
     putchar n + 48;
     putchar 10;
     return 0;
@@ -11,7 +11,7 @@ function gcd(a: i32, b: i32): i32 = {
     // calculate GCD using Euclid's algorithm
     if b == 0 {
         return a;
-    }
+    };
 
     return gcd(b, a%b);
 }

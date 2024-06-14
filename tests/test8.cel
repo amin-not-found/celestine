@@ -9,15 +9,15 @@ function main(): i32 = {
         while digit > 9 {
             digit = digit / 10;
             place = place + 1;
-        }
+        };
         putchar digit + 48;
         
         while place > 0 {
             digit = digit * 10;
             place = place - 1;
-        }
+        };
         n = n - digit;
-    }
+    };
 
     putchar 10;
 

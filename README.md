@@ -45,7 +45,7 @@ options:
 Celestine tries to be a low level system programming language with support for some modern programming features but retain some form of simplicity similar to C.
 
 A Celestine program consists of a main function which itself is made of statements. Every statement ends with a semicolon(`;`). There are four kinds of statements as of right now:
-1. putchar which prints given a number prints it's corresponding ASCII character. It exists as a way to test the language and will be removed or replaced ved with a function in the future.
+1. putchar which prints given a number prints it's corresponding ASCII character. It exists as a way to test the language and will be removed or replaced with a function in the future.
 2. return which ends the function returning the given number.
 3. Variable declaration(read about [variables](#variables))
 4. Expressions as statements
@@ -83,8 +83,8 @@ Example:
 // prints 1 as 1+48 is the ASCII code for '1'
 putchar ((4 + -1) * 2) / 3 - 1 + 48;
 ```
-#### If Expression/Statement
-Conditional execution of code is possible with `if`, `else if` and `else`. These keywords followed by a code block can be used both as expressions and statements. For now all if expressions return 0 but this will change in the future. Example:
+#### If Expression
+Conditional execution of code is possible with `if`, `else if` and `else`. These keywords followed by a code block are called if expressions which always return 0 but this will change in the future. Example:
 ```ts
 if x % 2 == 0 {
     // Print "Even"
@@ -97,11 +97,11 @@ if x % 2 == 0 {
     putchar 79;
     putchar 100;
     putchar 100;
-}
+};
 ```
 #### Loops
-Only while loop is supported at the moment. While is an expression and return 0 as of now just like if. Example:
-```ts
+Only while loop is supported at the moment. While is an expression and returns 0 as of now just like if. Example:
+```rust
 // prints a pyramid pattern
 function main(): i32 = {
     let rows = 5;
@@ -114,10 +114,10 @@ function main(): i32 = {
         while j < i {
             putchar star;
             j = j + 1;
-        }
+        };
         putchar newline;
         i = i + 1;
-    }
+    };
     return 0;
 }
 ```

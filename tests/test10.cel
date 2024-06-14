@@ -10,7 +10,7 @@ function main(): i32 = {
     while i < 5 {
         x = 0.5 * (x + n/x);
         i = i + 1;
-    }
+    };
     
     // print x to 5th decimal place
     let mut temp = 0;  
@@ -25,8 +25,8 @@ function main(): i32 = {
         
         if i == 1 {
             putchar 46; // dot
-        }
-    }
+        };
+    };
 
     putchar 10;
     return 0;
