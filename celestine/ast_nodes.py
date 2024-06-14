@@ -250,7 +250,8 @@ class Block(AST):
         self.end = self.scope.label()
 
     def __repr__(self) -> str:
-        return "\n    Block(" + "\n    ".join(map(str, self.body)) + ")\n"
+        body = "\n  ".join(str(stmt) for stmt in self.body)
+        return "Block(\n    " + body.replace("\n  ", "\n    ") + ")"
 
     def to_ir(self, gen: GenBackend, gen_labels=True) -> GenResult:
         return gen.block(
