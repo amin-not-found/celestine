@@ -1,4 +1,4 @@
-from typing import Optional, NamedTuple
+from typing import NamedTuple
 from abc import abstractmethod, ABCMeta
 
 from lexer import TokenKind
@@ -26,7 +26,7 @@ class GenResult:
         self.backend = backend
         self._results: list[ImmediateResult] = []
 
-    def __get_item__(self, index: int) -> ImmediateResult:
+    def __getitem__(self, index: int) -> ImmediateResult:
         return self._results[index]
 
     def __len__(self):
@@ -47,7 +47,7 @@ class GenResult:
     def append_str(self, ir: str):
         self.append(None, ir)
 
-    def insert(self, index, results: list[ImmediateResult]):
+    def insert(self, index: int, results: list[ImmediateResult]):
         for i, res in enumerate(results):
             self._results.insert(index + i, res)
 
@@ -58,9 +58,15 @@ class GenResult:
         self._results.pop(index)
 
 
+class BlockIR(NamedTuple):
+    result: GenResult
+    start_label: str
+    end_label: str
+
+
 class IfArm(NamedTuple):
     cond: GenResult
-    body: GenResult
+    body: BlockIR
 
 
 def gen_method(func):
@@ -114,7 +120,7 @@ class GenBackend(metaclass=ABCMeta):
     def if_expr(scope: Scope, arms: list[IfArm]) -> GenResult: ...
 
     @gen_method
-    def while_expr(scope: Scope, cond: GenResult, body: GenResult) -> GenResult: ...
+    def while_expr(scope: Scope, cond: GenResult, body: BlockIR) -> GenResult: ...
 
     @gen_method
     def var(scope: Scope, name: str, typ: PrimitiveType) -> GenResult: ...
@@ -139,25 +145,25 @@ class GenBackend(metaclass=ABCMeta):
     ) -> GenResult: ...
 
     @gen_method
-    def block(scope: Scope, statements: list[GenResult]) -> GenResult: ...
+    def block(
+        scope: Scope,
+        start_label: str,
+        end_label: str,
+        statements: list[GenResult],
+        gen_labels: bool,
+    ) -> GenResult: ...
 
     @gen_method
     def function(
         scope: Scope,
         name: str,
         arguments: list[tuple[str, Type]],
-        body: GenResult,
+        body: BlockIR,
         return_type: Type,
     ) -> GenResult: ...
 
     @gen_method
     def program(scope: Scope, functions: list[GenResult]) -> GenResult: ...
-
-
-class IfLabels(NamedTuple):
-    if_: Optional[str]
-    start: Optional[str]
-    else_: Optional[str]
 
 
 class QBEType(metaclass=ABCMeta):
@@ -480,57 +486,54 @@ class QBE(GenBackend):
     def if_expr(scope: Scope, arms: list[IfArm]) -> GenResult:
         assert len(arms) > 0
 
-        arm_labels: list[IfLabels] = []
         end_label = scope.label()
-
-        else_label = scope.label()
-        for arm in arms:
-            arm_labels.append(IfLabels(else_label, scope.label(), scope.label()))
-            else_label = arm_labels[-1].else_
-
         res = GenResult(QBE)
 
-        for arm, labels in zip(arms, arm_labels):
-            res.append_str(f"@{labels.if_}")
+        for i, arm in enumerate(arms):
+            arm_if = arm.body.start_label
+            arm_start = scope.label()
+            arm_else = (
+                arms[i + 1].body.start_label if (i < len(arms) - 1) else end_label
+            )
+            arm_end = arm.body.end_label
+
+            res.append_str(f"@{arm_if}")
 
             if arm.cond is None:
                 # Else clause is the only arm without cond
-                res.concat(arm.body)
+                res.concat(arm.body.result)
                 break
 
             res.concat(arm.cond)
             res.append(
                 None,
-                f"    jnz %{arm.cond.last().var}, @{labels.start}, @{labels.else_}",
+                f"    jnz %{arm.cond.last().var}, @{arm_start}, @{arm_else}",
             )
-            res.append_str(f"@{labels.start}")
-            res.concat(arm.body)
+            res.append_str(f"@{arm_start}")
+            res.concat(arm.body.result)
+            res.append_str(f"@{arm_end}")
+
             if not res.last().ir.strip().startswith("ret"):
                 res.append_str(f"    jmp @{end_label}")
-        else:
-            res.append_str(f"@{else_label}")
 
         res.append_str(f"@{end_label}")
         res_var = scope.temp()
+        # TODO : actually use return value of if arms
         res.append(res_var, f"    %{res_var} =l copy 0")
         return res
 
     @staticmethod
-    def while_expr(scope: Scope, cond: GenResult, body: GenResult) -> GenResult:
-        while_label = scope.label()
-        start_label = scope.label()
-        end_label = scope.label()
-        res_var = scope.temp()
+    def while_expr(scope: Scope, cond: GenResult, body: BlockIR) -> GenResult:
+        loop_label = scope.label()
 
         res = GenResult(QBE)
-        res.append_str(f"@{while_label}")
+        res.append_str(f"@{body.start_label}")
         res.concat(cond)
-        res.append_str(f"    jnz %{cond.last().var}, @{start_label}, @{end_label}")
-        res.append_str(f"@{start_label}")
-        res.concat(body)
-        res.append_str(f"jmp @{while_label}")
-        res.append_str(f"@{end_label}")
-        res.append(res_var, f"%{res_var} =l copy 0")
+        res.append_str(f"    jnz %{cond.last().var}, @{loop_label}, @{body.end_label}")
+        res.append_str(f"@{loop_label}")
+        res.concat(body.result)
+        res.append_str(f"jmp @{body.start_label}")
+        res.append(body.result.last().var, f"@{body.end_label}")
 
         return res
 
@@ -589,8 +592,16 @@ class QBE(GenBackend):
         return QBE.assignment(scope, name, typ, expr)
 
     @staticmethod
-    def block(scope: Scope, statements: list[GenResult]) -> GenResult:
+    def block(
+        scope: Scope,
+        start_label: str,
+        end_label: str,
+        statements: list[GenResult],
+        gen_labels: bool,
+    ) -> GenResult:
         res = GenResult(QBE)
+        if gen_labels:
+            res.append_str(f"@{start_label}")
 
         for _, var in scope.vars():
             if var.level == ScopeType.FUNC_ARG:
@@ -600,6 +611,13 @@ class QBE(GenBackend):
         for stmt in statements:
             res.concat(stmt)
 
+        res_var = scope.temp()
+        if not res.last().ir.strip().startswith("ret"):
+            res.append(res_var, f"    %{res_var} =l copy 0")
+
+        if gen_labels:
+            res.append(res_var, f"@{end_label}")
+
         return res
 
     @staticmethod
@@ -607,7 +625,7 @@ class QBE(GenBackend):
         scope: Scope,
         name: str,
         arguments: list[tuple[str, Type]],
-        body: GenResult,
+        body: BlockIR,
         return_type: Type,
     ) -> GenResult:
         return_type = QBE.type_implementations[return_type]
@@ -621,7 +639,12 @@ class QBE(GenBackend):
             prelude.append_str(f"    %{var_state.address} =l alloc8 {typ.size}")
             prelude.concat(
                 QBE.assignment(
-                    scope, arg, typ, GenResult.singular(ImmediateResult(temp, f"    # param {arg}"), QBE)
+                    scope,
+                    arg,
+                    typ,
+                    GenResult.singular(
+                        ImmediateResult(temp, f"    # param {arg}"), QBE
+                    ),
                 )
             )
 
@@ -631,15 +654,13 @@ class QBE(GenBackend):
         res = GenResult(QBE)
 
         args = ", ".join(args)
-        res.append_str(
-            f"export function {return_type.signature} ${name}({args}) {{\n@start"
-        )
+        res.append_str(f"export function {return_type.signature} ${name}({args}) {{")
+        res.append_str(f"@{body.start_label}")
         res.concat(prelude)
-        res.concat(body)
-
-        if not res.last().ir.strip().startswith("ret"):
-            res.append_str("    ret")
-
+        res.concat(body.result)
+        res.append_str(f"@{body.end_label}")
+        # res.append_str(f"    ret %{body.result.last().var}")
+        res.append_str("    ret")
         res.append_str("}\n")
         return res
 

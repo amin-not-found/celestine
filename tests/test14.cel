@@ -1,0 +1,7 @@
+function main(): i32 = {
+    let x = {
+        putchar 49;
+    };
+    putchar 48;
+    return 0;
+}

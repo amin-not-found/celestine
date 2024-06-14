@@ -551,6 +551,7 @@ class Parser:
         TokenKind.INTEGER: integer,
         TokenKind.FLOAT: float,
         TokenKind.LEFT_PAREN: group,
+        TokenKind.LEFT_BRACE: block,
         TokenKind.MINUS: unary_op,
         TokenKind.BANG: unary_op,
         TokenKind.IDENTIFIER: identifier,

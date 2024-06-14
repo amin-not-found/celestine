@@ -5,7 +5,7 @@ from enum import Enum, auto
 
 from lexer import TokenKind
 from scope import Scope, Type
-from gen import GenBackend, GenResult, IfArm
+from gen import GenBackend, GenResult, IfArm, BlockIR
 from type import PrimitiveType, NumericalType, I32, F32
 
 
@@ -153,7 +153,7 @@ class IfExpr(AST):
             cond = arm[0]
             if cond is not None:
                 cond = cond.to_ir(gen)
-            arms.append(IfArm(cond, arm[1].to_ir(gen)))
+            arms.append(IfArm(cond, arm[1].to_block_ir(gen, False)))
 
         return gen.if_expr(self.scope, arms)
 
@@ -172,7 +172,11 @@ class WhileExpr(AST):
         return f"WhileExpr({self.cond}, {body})"
 
     def to_ir(self, gen: GenBackend) -> GenResult:
-        return gen.while_expr(self.scope, self.cond.to_ir(gen), self.body.to_ir(gen))
+        return gen.while_expr(
+            self.scope,
+            self.cond.to_ir(gen),
+            self.body.to_block_ir(gen, False),
+        )
 
 
 @dataclass
@@ -242,12 +246,23 @@ class Block(AST):
 
     def __post_init__(self):
         self.type = I32
+        self.start = self.scope.label()
+        self.end = self.scope.label()
 
     def __repr__(self) -> str:
-        return "\n    " + "\n    ".join(map(str, self.body))
+        return "\n    Block(" + "\n    ".join(map(str, self.body)) + ")\n"
 
-    def to_ir(self, gen: GenBackend) -> GenResult:
-        return gen.block(self.scope, [stmt.to_ir(gen) for stmt in self.body])
+    def to_ir(self, gen: GenBackend, gen_labels=True) -> GenResult:
+        return gen.block(
+            self.scope,
+            self.start,
+            self.end,
+            [stmt.to_ir(gen) for stmt in self.body],
+            gen_labels,
+        )
+
+    def to_block_ir(self, gen: GenBackend, gen_labels=True) -> BlockIR:
+        return BlockIR(self.to_ir(gen, gen_labels), self.start, self.end)
 
 
 @dataclass
@@ -264,7 +279,11 @@ class Function(AST):
 
     def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.function(
-            self.scope, self.name, self.arguments, self.body.to_ir(gen), self.type
+            self.scope,
+            self.name,
+            self.arguments,
+            self.body.to_block_ir(gen, False),
+            self.type,
         )
 
 
