@@ -3,7 +3,7 @@ from enum import Enum, auto
 from typing import Optional, NamedTuple
 
 
-class Type(metaclass=ABCMeta):
+class BaseType(metaclass=ABCMeta):
     @property
     @staticmethod
     @abstractmethod
@@ -31,7 +31,7 @@ class VariableState(NamedTuple):
     mutable: bool
     address: str
     level: ScopeType
-    type: Type
+    type: BaseType
 
 
 class VariableRedeclareError(Exception):
@@ -101,12 +101,12 @@ class Scope:
             case _:
                 raise ValueError("Unreachable")
 
-    def declare_var(self, name: str, typ: Type, mut: bool):
+    def declare_var(self, name: str, typ: BaseType, mut: bool):
         if name in self._vars:
             raise VariableRedeclareError()
         self._vars[name] = VariableState(mut, self._var(), self._kind, typ)
 
-    def declare_arg(self, name: str, typ: Type, mut: bool):
+    def declare_arg(self, name: str, typ: BaseType, mut: bool):
         self._vars[name] = VariableState(mut, self._var(), ScopeType.FUNC_ARG, typ)
 
     def var_state(self, name: str) -> Optional[VariableState]:

@@ -1,8 +1,8 @@
 from abc import ABCMeta, abstractmethod
-from typing import Callable, NamedTuple, Optional
+from typing import Callable, NamedTuple, Optional, Type
 
 from lexer import TokenKind
-from scope import Scope
+from scope import Scope, BaseType
 
 
 class ImmediateResult(NamedTuple):
@@ -10,14 +10,14 @@ class ImmediateResult(NamedTuple):
     ir: str
 
 
-UnaryOperator = Callable[["PrimitiveType", str, Scope], ImmediateResult]
+UnaryOperator = Callable[[Type["PrimitiveType"], str, Scope], ImmediateResult]
 BinaryOperator = Callable[
-    ["PrimitiveType", str, str, Scope],
+    [Type["PrimitiveType"], str, str, Scope],
     ImmediateResult,
 ]
 
 
-class PrimitiveType(metaclass=ABCMeta):
+class PrimitiveType(BaseType, metaclass=ABCMeta):
     unary_operators: dict[TokenKind, UnaryOperator] = {}
     binary_operators: dict[TokenKind, BinaryOperator] = {}
 

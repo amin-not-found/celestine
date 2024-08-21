@@ -1,7 +1,7 @@
-from typing import NamedTuple, TextIO, Optional
+from typing import NamedTuple, TextIO, Optional, Type
 
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
-from scope import Type, Scope, ScopeType, VariableRedeclareError
+from scope import BaseType, Scope, ScopeType, VariableRedeclareError
 import ast_nodes as ast
 from type import PrimitiveType, NumericalType, I32, I64, F32, F64
 
@@ -29,7 +29,7 @@ expr_precedences = {
     TokenKind.AS: 11,
 }
 
-primitive_types: dict[str, PrimitiveType] = {
+primitive_types: dict[str, type[PrimitiveType]] = {
     "i32": I32,
     "i64": I64,
     "f32": F32,
@@ -466,7 +466,7 @@ class Parser:
         return stmt
 
     def func_args(self, scope: Scope):
-        args: list[tuple[str, Type]] = []
+        args: list[tuple[str, BaseType]] = []
 
         if self.peek().kind == TokenKind.RIGHT_PAREN:
             return args
@@ -549,6 +549,7 @@ class Parser:
         TokenKind.LEFT_BRACE: block,
         TokenKind.MINUS: unary_op,
         TokenKind.BANG: unary_op,
+        TokenKind.AMPERSAND: pointer,
         TokenKind.IDENTIFIER: identifier,
         TokenKind.IF: if_expr,
         TokenKind.WHILE: while_expr,

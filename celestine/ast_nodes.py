@@ -1,16 +1,16 @@
 from abc import abstractmethod, ABCMeta
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import NamedTuple, Type
 from enum import Enum, auto
 
 from lexer import TokenKind
-from scope import Scope, Type
+from scope import Scope, BaseType
 from gen import GenBackend, GenResult, IfArm, BlockIR
-from type import PrimitiveType, NumericalType, I32, F32
+from type import PrimitiveType, NumericalType, I32, I64, F32
 
 
 class AST(metaclass=ABCMeta):
-    type: Type | None = None
+    type: Type[BaseType] | None = None
 
     @abstractmethod
     def __repr__(self) -> str: ...
@@ -44,7 +44,7 @@ class Literal(AST, metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def type(self) -> PrimitiveType: ...
+    def type(self) -> Type[PrimitiveType]: ...
 
     def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.literal(self.scope, self.type, self.lexeme)
@@ -65,7 +65,7 @@ class FloatLiteral(Literal):
 class Variable(AST):
     name: str
     scope: Scope
-    type: Type
+    type: Type[BaseType]
 
     def __repr__(self) -> str:
         return f"Variable(name={self.name})"
@@ -78,7 +78,7 @@ class Variable(AST):
 class Cast(AST):
     expr: "Expr"
     scope: Scope
-    type: NumericalType
+    type: Type[NumericalType]
 
     def __repr__(self) -> str:
         return f"Cast(expr={self.expr}, to={self.type})"
@@ -95,7 +95,7 @@ class UnaryOp(AST):
     scope: Scope
 
     def __post_init__(self):
-        self.type: PrimitiveType = self.expr.type
+        self.type: Type[PrimitiveType] = self.expr.type
 
     def __repr__(self) -> str:
         return f"UnaryOp(op={self.op}, expr={self.expr})"
@@ -113,7 +113,7 @@ class BinaryOp(AST):
     scope: Scope
 
     def __post_init__(self):
-        self.type: PrimitiveType = self.right.type
+        self.type: Type[PrimitiveType] = self.right.type
 
     def __repr__(self):
         return f"BinaryOp(op={self.op}, left={self.left}, right={self.right})"
@@ -185,7 +185,7 @@ class FuncCall(AST):
     function_name: str
     parameters: list["Expr"]
     scope: Scope
-    type: Type
+    type: Type[BaseType]
 
     def __repr__(self) -> str:
         args = ", ".join(map(str, self.parameters))
@@ -223,7 +223,7 @@ class SimpleStatement(AST):
 class VariableDeclare(AST):
     expr: Expr
     name: str
-    var_type: Type
+    var_type: Type[BaseType]
     scope: Scope
 
     def __repr__(self) -> str:
@@ -271,9 +271,9 @@ class Block(AST):
 class Function(AST):
     name: str
     body: Block
-    arguments: list[tuple[str, Type]]
+    arguments: list[tuple[str, BaseType]]
     scope: Scope
-    type: Type
+    type: Type[BaseType]
 
     def __repr__(self) -> str:
         args = ", ".join(f"{arg}={typ.__name__}" for arg, typ in self.arguments)

@@ -1,8 +1,8 @@
-from typing import NamedTuple
+from typing import NamedTuple, Type
 from abc import abstractmethod, ABCMeta
 
 from lexer import TokenKind
-from scope import Scope, ScopeType, Type
+from scope import Scope, ScopeType, BaseType
 from type import (
     ImmediateResult,
     PrimitiveType,
@@ -75,22 +75,22 @@ def gen_method(func):
 
 class GenBackend(metaclass=ABCMeta):
     # pylint: disable=unused-argument
-    type_implementations: dict[PrimitiveType, PrimitiveType]
+    type_implementations: dict[Type[PrimitiveType], Type[PrimitiveType]]
 
     @gen_method
-    def literal(scope: Scope, typ: PrimitiveType, value: str) -> GenResult: ...
+    def literal(scope: Scope, typ: Type[PrimitiveType], value: str) -> GenResult: ...
 
     @gen_method
     def unary_op(
         scope: Scope,
         op: TokenKind,
-        typ: PrimitiveType,
+        typ: Type[PrimitiveType],
         expr: GenResult,
     ) -> GenResult: ...
 
     @gen_method
     def assignment(
-        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+        scope: Scope, name: str, typ: Type[PrimitiveType], expr: GenResult
     ) -> GenResult: ...
 
     @gen_method
@@ -104,14 +104,14 @@ class GenBackend(metaclass=ABCMeta):
         op: TokenKind,
         left: GenResult,
         right: GenResult,
-        typ: PrimitiveType,
+        typ: Type[PrimitiveType],
     ) -> GenResult: ...
 
     @gen_method
     def binary_op(
         scope: Scope,
         op: TokenKind,
-        typ: PrimitiveType,
+        typ: Type[PrimitiveType],
         left: GenResult,
         right: GenResult,
     ) -> GenResult: ...
@@ -123,14 +123,14 @@ class GenBackend(metaclass=ABCMeta):
     def while_expr(scope: Scope, cond: GenResult, body: BlockIR) -> GenResult: ...
 
     @gen_method
-    def var(scope: Scope, name: str, typ: PrimitiveType) -> GenResult: ...
+    def var(scope: Scope, name: str, typ: Type[PrimitiveType]) -> GenResult: ...
 
     @gen_method
     def func_call(
         scope: Scope,
         name: str,
-        params: list[tuple[GenResult, Type]],
-        typ: PrimitiveType,
+        params: list[tuple[GenResult, BaseType]],
+        typ: Type[PrimitiveType],
     ) -> GenResult: ...
 
     @gen_method
@@ -141,7 +141,7 @@ class GenBackend(metaclass=ABCMeta):
 
     @gen_method
     def var_declare(
-        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+        scope: Scope, name: str, typ: Type[PrimitiveType], expr: GenResult
     ) -> GenResult: ...
 
     @gen_method
@@ -157,9 +157,9 @@ class GenBackend(metaclass=ABCMeta):
     def function(
         scope: Scope,
         name: str,
-        arguments: list[tuple[str, Type]],
+        arguments: list[tuple[str, BaseType]],
         body: BlockIR,
-        return_type: Type,
+        return_type: BaseType,
     ) -> GenResult: ...
 
     @gen_method
@@ -377,7 +377,7 @@ class QBEf64(QBEFloat, F64):
 
 
 class QBE(GenBackend):
-    type_implementations: dict[PrimitiveType, QBEPrimitiveType] = {
+    type_implementations: dict[Type[PrimitiveType], Type[QBEPrimitiveType]] = {
         I64: QBEi64,
         I32: QBEi32,
         F32: QBEf32,
@@ -385,13 +385,13 @@ class QBE(GenBackend):
     }
 
     @staticmethod
-    def literal(scope: Scope, typ: PrimitiveType, value: str) -> GenResult:
+    def literal(scope: Scope, typ: Type[PrimitiveType], value: str) -> GenResult:
         typ = QBE.type_implementations[typ]
         return GenResult.singular(typ.assign(value, scope), QBE)
 
     @staticmethod
     def assignment(
-        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+        scope: Scope, name: str, typ: Type[PrimitiveType], expr: GenResult
     ) -> GenResult:
         typ = QBE.type_implementations[typ]
         var_signature = scope.var_signature(name)
@@ -426,7 +426,7 @@ class QBE(GenBackend):
         op: TokenKind,
         left: GenResult,
         right: GenResult,
-        typ: PrimitiveType,
+        typ: Type[PrimitiveType],
     ):
         res = scope.temp()
         resume_label = scope.label()
@@ -457,7 +457,7 @@ class QBE(GenBackend):
     def unary_op(
         scope: Scope,
         op: TokenKind,
-        typ: PrimitiveType,
+        typ: Type[PrimitiveType],
         expr: GenResult,
     ):
         typ = QBE.type_implementations[typ]
@@ -469,7 +469,7 @@ class QBE(GenBackend):
     def binary_op(
         scope: Scope,
         op: TokenKind,
-        typ: PrimitiveType,
+        typ: Type[PrimitiveType],
         left: GenResult,
         right: GenResult,
     ):
@@ -538,7 +538,7 @@ class QBE(GenBackend):
         return res
 
     @staticmethod
-    def var(scope: Scope, name: str, typ: PrimitiveType) -> GenResult:
+    def var(scope: Scope, name: str, typ: Type[PrimitiveType]) -> GenResult:
         typ = QBE.type_implementations[typ]
         var_signature = scope.var_signature(name)
 
@@ -555,8 +555,8 @@ class QBE(GenBackend):
     def func_call(
         scope: Scope,
         name: str,
-        params: list[tuple[GenResult, Type]],
-        typ: PrimitiveType,
+        params: list[tuple[GenResult, BaseType]],
+        typ: Type[PrimitiveType],
     ) -> GenResult:
         typ: QBEType = QBE.type_implementations[typ]
         var = scope.temp()
@@ -587,7 +587,7 @@ class QBE(GenBackend):
 
     @staticmethod
     def var_declare(
-        scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
+        scope: Scope, name: str, typ: Type[PrimitiveType], expr: GenResult
     ) -> GenResult:
         return QBE.assignment(scope, name, typ, expr)
 
@@ -624,9 +624,9 @@ class QBE(GenBackend):
     def function(
         scope: Scope,
         name: str,
-        arguments: list[tuple[str, Type]],
+        arguments: list[tuple[str, BaseType]],
         body: BlockIR,
-        return_type: Type,
+        return_type: BaseType,
     ) -> GenResult:
         return_type = QBE.type_implementations[return_type]
         prelude = GenResult(QBE)
