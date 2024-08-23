@@ -1,4 +1,5 @@
-#!/usr/bin/sh
+#!/usr/bin/bash
+
 TEMP_FILE="./temp"
 
 
