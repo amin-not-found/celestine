@@ -6,7 +6,7 @@ from enum import Enum, auto
 from lexer import TokenKind
 from scope import Scope, BaseType
 from gen import GenBackend, GenResult, IfArm, BlockIR
-from type import PrimitiveType, NumericalType, I32, I64, F32
+from type import PrimitiveType, NumericalType, I32, F32
 
 
 class AST(metaclass=ABCMeta):

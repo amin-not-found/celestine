@@ -1,4 +1,4 @@
-from typing import NamedTuple, Type
+from typing import NamedTuple, Type, Callable
 from abc import abstractmethod, ABCMeta
 
 from lexer import TokenKind
@@ -13,6 +13,13 @@ from type import (
     F32,
     F64,
 )
+
+
+UnaryOperator = Callable[[Type["PrimitiveType"], str, Scope], ImmediateResult]
+BinaryOperator = Callable[
+    [Type["PrimitiveType"], str, str, Scope],
+    ImmediateResult,
+]
 
 
 class GenResult:
@@ -173,7 +180,16 @@ class QBEType(metaclass=ABCMeta):
 
 
 class QBEPrimitiveType(QBEType, PrimitiveType, metaclass=ABCMeta):
-    pass
+    unary_ops = {}
+    binary_ops = {}
+
+    @classmethod
+    def unary_op_func(cls, op: TokenKind) -> UnaryOperator:
+        return getattr(cls, (cls.unary_ops[op]).__name__)
+
+    @classmethod
+    def binary_op_func(cls, op: TokenKind) -> BinaryOperator:
+        return getattr(cls, (cls.binary_ops[op]).__name__)
 
 
 class QBENumerical(QBEPrimitiveType, NumericalType, metaclass=ABCMeta):
@@ -199,11 +215,6 @@ class QBENumerical(QBEPrimitiveType, NumericalType, metaclass=ABCMeta):
     def logic_bin_op(cls, instruction: str, a: str, b: str, scope: Scope):
         res = scope.temp()
         return ImmediateResult(res, f"    %{res} =w {instruction} %{a}, %{b}")
-
-    @classmethod
-    def logical_not(cls, a: str, scope: Scope):
-        res = scope.temp()
-        return ImmediateResult(res, f"    %{res} =l ceq{cls.signature} %{a}, 0")
 
     @classmethod
     def add(cls, a: str, b: str, scope: Scope):
@@ -241,6 +252,23 @@ class QBENumerical(QBEPrimitiveType, NumericalType, metaclass=ABCMeta):
     def le(cls, a: str, b: str, scope: Scope):
         return cls.logic_bin_op(f"c{cls.sign_signature}le{cls.signature}", a, b, scope)
 
+    unary_ops = {
+        **QBEPrimitiveType.unary_ops,
+    }
+
+    binary_ops = {
+        **QBEPrimitiveType.binary_ops,
+        TokenKind.PLUS: add,
+        TokenKind.MINUS: subtract,
+        TokenKind.ASTERISK: multiply,
+        TokenKind.GT: gt,
+        TokenKind.LT: lt,
+        TokenKind.GE: ge,
+        TokenKind.LE: le,
+        TokenKind.EQ: eq,
+        TokenKind.NE: ne,
+    }
+
 
 class QBESignedNumerical(QBENumerical, metaclass=ABCMeta):
 
@@ -253,12 +281,38 @@ class QBESignedNumerical(QBENumerical, metaclass=ABCMeta):
     def divide(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("div", a, b, scope)
 
+    unary_ops = {
+        **QBENumerical.unary_ops,
+        TokenKind.MINUS: negative,
+    }
+
+    binary_ops = {
+        **QBENumerical.binary_ops,
+        TokenKind.SLASH: divide,
+    }
+
+
+class QBEUnsignedNumerical(QBENumerical, metaclass=ABCMeta):
+    @classmethod
+    def divide(cls, a: str, b: str, scope: Scope):
+        return cls.bin_op("udiv", a, b, scope)
+
+    binary_ops = {
+        **QBENumerical.binary_ops,
+        TokenKind.SLASH: divide,
+    }
+
 
 class QBEInteger(QBENumerical, metaclass=ABCMeta):
     @classmethod
     def assign(cls, value: str, scope: Scope):
         var = scope.temp()
         return ImmediateResult(var, f"    %{var} ={cls.signature} copy {value}")
+
+    @classmethod
+    def logical_not(cls, a: str, scope: Scope):
+        res = scope.temp()
+        return ImmediateResult(res, f"    %{res} =l ceq{cls.signature} %{a}, 0")
 
     @classmethod
     def bit_and(cls, a: str, b: str, scope: Scope):
@@ -275,6 +329,18 @@ class QBEInteger(QBENumerical, metaclass=ABCMeta):
     @classmethod
     def left_shift(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("shl", a, b, scope)
+
+    unary_ops = {
+        **QBENumerical.unary_ops,
+        TokenKind.BANG: logical_not,
+    }
+    binary_ops = {
+        **QBENumerical.binary_ops,
+        TokenKind.AMPERSAND: bit_and,
+        TokenKind.V_BAR: bit_or,
+        TokenKind.CARET: bit_xor,
+        TokenKind.SHIFT_L: left_shift,
+    }
 
 
 class QBEFloat(QBESignedNumerical, metaclass=ABCMeta):
@@ -299,6 +365,18 @@ class QBESignedInteger(QBEInteger, QBESignedNumerical, metaclass=ABCMeta):
     def right_shift(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("sar", a, b, scope)
 
+    unary_ops = {
+        **QBEInteger.unary_ops,
+        **QBESignedNumerical.unary_ops,
+    }
+
+    binary_ops = {
+        **QBEInteger.binary_ops,
+        **QBESignedNumerical.binary_ops,
+        TokenKind.PERCENT: remainder,
+        TokenKind.SHIFT_R: right_shift,
+    }
+
 
 class QBEUnsignedInteger(QBEInteger, metaclass=ABCMeta):
     sign_signature = "u"
@@ -310,6 +388,11 @@ class QBEUnsignedInteger(QBEInteger, metaclass=ABCMeta):
     @classmethod
     def right_shift(cls, a: str, b: str, scope: Scope):
         return cls.bin_op("shr", a, b, scope)
+
+    binary_ops = {
+        **QBEInteger.binary_ops,
+        TokenKind.PERCENT: remainder,
+    }
 
 
 class QBEi64(QBESignedInteger, I64):

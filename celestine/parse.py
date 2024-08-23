@@ -1,4 +1,4 @@
-from typing import NamedTuple, TextIO, Optional, Type
+from typing import NamedTuple, TextIO, Optional
 
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
 from scope import BaseType, Scope, ScopeType, VariableRedeclareError
@@ -34,6 +34,43 @@ primitive_types: dict[str, type[PrimitiveType]] = {
     "i64": I64,
     "f32": F32,
     "f64": F64,
+}
+
+
+numerical_types = {I32, I64, F32, F64}
+
+integral_types = {I32, I64}
+
+numerical_bin_ops = {
+    TokenKind.PLUS: "add",
+    TokenKind.MINUS: "subtract",
+    TokenKind.ASTERISK: "multiply",
+    TokenKind.SLASH: "divide",
+    TokenKind.GT: "gt",
+    TokenKind.LT: "lt",
+    TokenKind.GE: "ge",
+    TokenKind.LE: "le",
+    TokenKind.EQ: "eq",
+    TokenKind.NE: "ne",
+}
+
+numerical_unary_ops = {
+    TokenKind.MINUS: "negative",
+}
+
+integral_bin_ops = {
+    TokenKind.L_AND,
+    TokenKind.L_OR,
+    TokenKind.PERCENT,
+    TokenKind.AMPERSAND,
+    TokenKind.V_BAR,
+    TokenKind.CARET,
+    TokenKind.SHIFT_L,
+    TokenKind.SHIFT_R,
+}
+
+integral_unary_ops = {
+    TokenKind.BANG,
 }
 
 
@@ -258,7 +295,11 @@ class Parser:
         if not issubclass(expr.type, PrimitiveType):
             self.error(expr.offset, "Operators are only supported for primitive types")
 
-        if op.kind not in expr.type.unary_operators:
+        if (expr.type in numerical_types) and (op.kind in numerical_unary_ops):
+            pass
+        elif (expr.type in integral_types) and (op.kind in integral_unary_ops):
+            pass
+        else:
             self.error(
                 op.offset, f"Operator {op.kind.name} is not supported by {expr.type}"
             )
@@ -344,9 +385,8 @@ class Parser:
 
         right = self.expr(scope, expr_precedences[op.kind])
 
-        if not issubclass(left.type, PrimitiveType):
-            self.error(op.offset, "Operators are only supported for primitive types.")
-
+        # After excluding assignment and cast,
+        # we should be left with operands of same type
         if left.type != right.type:
             self.error(
                 op.offset,
@@ -354,7 +394,11 @@ class Parser:
                 " side of operation don't have the same type.",
             )
 
-        if op.kind not in left.type.binary_operators:
+        if (left.type in numerical_types) and (op.kind in numerical_bin_ops):
+            pass
+        elif (left.type in integral_types) and (op.kind in integral_bin_ops):
+            pass
+        else:
             self.error(
                 op.offset, f"Operator {op.kind.name} isn't supported for {left.type}"
             )
@@ -549,7 +593,6 @@ class Parser:
         TokenKind.LEFT_BRACE: block,
         TokenKind.MINUS: unary_op,
         TokenKind.BANG: unary_op,
-        TokenKind.AMPERSAND: pointer,
         TokenKind.IDENTIFIER: identifier,
         TokenKind.IF: if_expr,
         TokenKind.WHILE: while_expr,
