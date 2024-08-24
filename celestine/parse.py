@@ -82,12 +82,12 @@ integral_unary_ops = {
 
 class Diagnostic(NamedTuple):
     msg: str
-    io: TextIO
+    text: TextIO
     offset: int
 
     def __repr__(self) -> str:
         (line, col) = self.get_pos()
-        location = f"{self.io.name}:{line}:{col}"
+        location = f"{self.text.name}:{line}:{col}"
 
         return f"{location}: Error: {self.msg}"
 
@@ -96,12 +96,12 @@ class Diagnostic(NamedTuple):
         line = 1
         col = 1
 
-        self.io.seek(0)
+        self.text.seek(0)
         while offset < self.offset:
-            c = self.io.read(1)
+            char = self.text.read(1)
             offset += 1
 
-            if c == "\n":
+            if char == "\n":
                 line += 1
                 col = 1
             else:
@@ -130,9 +130,9 @@ class Parser:
             try:
                 self._last_token = self.lexer.next()
                 return self._last_token
-            except UnrecognizedToken as e:
+            except UnrecognizedToken as err:
                 self.sync_error(
-                    self.lexer.offset, f"Syntax Error: Unexpected '{e.text}'."
+                    self.lexer.offset, f"Syntax Error: Unexpected '{err.text}'."
                 )
 
     def peek(self) -> Token:

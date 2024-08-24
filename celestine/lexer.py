@@ -124,8 +124,8 @@ class Lexer(Iterator):
     @staticmethod
     def lex_file(path: PathLike):
         # pylint: disable=consider-using-with
-        fp = open(path, encoding="UTF-8", newline="")
-        return Lexer(fp)
+        file = open(path, encoding="UTF-8", newline="")
+        return Lexer(file)
 
     def __iter__(self):
         return self
@@ -135,16 +135,16 @@ class Lexer(Iterator):
             self._peeked = False
             return self._peeked_token
 
-        c = self._forward_char()
+        char = self._forward_char()
 
-        while c.isspace():
-            c = self._forward_char()
+        while char.isspace():
+            char = self._forward_char()
 
-        if not c:
+        if not char:
             self._position -= 1
             raise StopIteration
 
-        kind = self.single_char_tokens.get(c)
+        kind = self.single_char_tokens.get(char)
 
         # handle two or more character tokens
         two_char_candids = self.two_char_tokens.get(kind)
@@ -156,20 +156,20 @@ class Lexer(Iterator):
 
         if kind == TokenKind.COMMENT:
             # A line comment
-            while c and c != "\n":
-                c = self._forward_char()
+            while char and char != "\n":
+                char = self._forward_char()
             return self.next()
 
         if kind is None:
             self._back_char()
-            if c.isdigit() or c == ".":
+            if char.isdigit() or char == ".":
                 return self.parse_number()
-            if c.isalpha() or c == "_":
+            if char.isalpha() or char == "_":
                 return self.parse_id()
             self._forward_char()
-            raise UnrecognizedToken(c)
+            raise UnrecognizedToken(char)
 
-        return Token(kind, self._position, c)
+        return Token(kind, self._position, char)
 
     def __del__(self):
         self._text.close()
@@ -206,35 +206,35 @@ class Lexer(Iterator):
     def parse_number(self) -> Token:
         pos = self._position
 
-        s = []
+        lexeme = []
         is_float = False
 
-        while (c := self._forward_char()).isdigit():
-            s.append(c)
+        while (char := self._forward_char()).isdigit():
+            lexeme.append(char)
 
-        if c == ".":
+        if char == ".":
             is_float = True
-            s.append(c)
-            while (c := self._forward_char()).isdigit():
-                s.append(c)
+            lexeme.append(char)
+            while (char := self._forward_char()).isdigit():
+                lexeme.append(char)
 
         self._back_char()
-        s = "".join(s)
+        lexeme = "".join(lexeme)
 
         kind = TokenKind.FLOAT if is_float else TokenKind.INTEGER
 
-        return Token(kind, pos, s)
+        return Token(kind, pos, lexeme)
 
     def parse_id(self) -> Token:
         pos = self._position
-        s = []
-        c = self._forward_char()
-        while c.isalnum() or c == "_":
-            s.append(c)
-            c = self._forward_char()
+        lexeme = []
+        char = self._forward_char()
+        while char.isalnum() or char == "_":
+            lexeme.append(char)
+            char = self._forward_char()
         self._back_char()
 
-        s = "".join(s)
-        kind = self.keywords.get(s) or TokenKind.IDENTIFIER
+        lexeme = "".join(lexeme)
+        kind = self.keywords.get(lexeme) or TokenKind.IDENTIFIER
 
-        return Token(kind, pos, s)
+        return Token(kind, pos, lexeme)

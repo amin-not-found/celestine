@@ -23,6 +23,7 @@ function-naming-style=snake_case
 method-naming-style=snake_case
 module-naming-style=snake_case
 variable-naming-style=snake_case
+good-names=i, j, k, a, b, op, gt, lt, ge, le, eq, ne, ir, to
 
 
 [CLASSES]

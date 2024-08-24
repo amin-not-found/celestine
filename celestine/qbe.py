@@ -1,7 +1,8 @@
 from typing import Type, Callable
 from abc import abstractmethod, ABCMeta
 
-from types_abc import *
+
+from types_abc import *  # pylint: disable=wildcard-import,unused-wildcard-import
 from lexer import TokenKind
 from scope import Scope, ScopeType
 from gen import GenBackend, GenResult, BlockIR, IfArm

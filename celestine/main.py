@@ -29,17 +29,17 @@ def compile_file(args: Namespace) -> Path:
             sys.exit(1)
 
     if len(parser.diagnostics) > 0:
-        for d in parser.diagnostics:
-            print(d, file=sys.stderr)
+        for diag in parser.diagnostics:
+            print(diag, file=sys.stderr)
         sys.exit(1)
 
     if args.print:
         print(program)
 
     gen = QBE
-    with open(ssa_file, "w", encoding="UTF-8") as f:
+    with open(ssa_file, "w", encoding="UTF-8") as file:
         ir = program.to_ir(gen)
-        f.writelines(line + "\n" for _, line in ir.results())
+        file.writelines(line + "\n" for _, line in ir.results())
 
     run(
         ["qbe", "-o", asm_file, ssa_file],
