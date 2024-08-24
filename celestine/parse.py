@@ -3,7 +3,14 @@ from typing import NamedTuple, TextIO, Optional
 from lexer import Lexer, TokenKind, Token, UnrecognizedToken
 from scope import BaseType, Scope, ScopeType, VariableRedeclareError
 import ast_nodes as ast
-from type import PrimitiveType, NumericalType, I32, I64, F32, F64
+from types_info import (
+    PrimitiveType,
+    I32,
+    I64,
+    F32,
+    F64,
+    Pointer,
+)
 
 
 expr_precedences = {
@@ -36,26 +43,25 @@ primitive_types: dict[str, type[PrimitiveType]] = {
     "f64": F64,
 }
 
+numerical_types = (I32, I64, F32, F64, Pointer)
 
-numerical_types = {I32, I64, F32, F64}
-
-integral_types = {I32, I64}
+integral_types = (I32, I64)
 
 numerical_bin_ops = {
-    TokenKind.PLUS: "add",
-    TokenKind.MINUS: "subtract",
-    TokenKind.ASTERISK: "multiply",
-    TokenKind.SLASH: "divide",
-    TokenKind.GT: "gt",
-    TokenKind.LT: "lt",
-    TokenKind.GE: "ge",
-    TokenKind.LE: "le",
-    TokenKind.EQ: "eq",
-    TokenKind.NE: "ne",
+    TokenKind.PLUS,
+    TokenKind.MINUS,
+    TokenKind.ASTERISK,
+    TokenKind.SLASH,
+    TokenKind.GT,
+    TokenKind.LT,
+    TokenKind.GE,
+    TokenKind.LE,
+    TokenKind.EQ,
+    TokenKind.NE,
 }
 
 numerical_unary_ops = {
-    TokenKind.MINUS: "negative",
+    TokenKind.MINUS,
 }
 
 integral_bin_ops = {
@@ -192,6 +198,9 @@ class Parser:
     def type(self):
         token = self.advance()
 
+        if token.kind == TokenKind.AMPERSAND:
+            return Pointer(self.type())
+
         if token.kind != TokenKind.IDENTIFIER:
             self.sync_error(token.offset, "Expected a type identifier.")
 
@@ -199,7 +208,7 @@ class Parser:
 
         if typ is None:
             self.sync_error(token.offset, f"Unknown type {token.lexeme}.")
-        return typ
+        return typ()
 
     def integer(self, scope: Scope):
         token = self.advance()
@@ -279,7 +288,7 @@ class Parser:
             )
 
         for i, (param, arg) in enumerate(zip(params, args)):
-            if param.type != arg[1]:
+            if type(param.type) is not type(arg[1]):
                 self.error(
                     name_token.offset,
                     f"Incorrect argument type for argument number {i+1} "
@@ -292,12 +301,9 @@ class Parser:
         op = self.advance()
         expr = self.expr(scope, len(expr_precedences))
 
-        if not issubclass(expr.type, PrimitiveType):
-            self.error(expr.offset, "Operators are only supported for primitive types")
-
-        if (expr.type in numerical_types) and (op.kind in numerical_unary_ops):
+        if isinstance(expr.type, numerical_types) and (op.kind in numerical_unary_ops):
             pass
-        elif (expr.type in integral_types) and (op.kind in integral_unary_ops):
+        elif isinstance(expr.type, integral_types) and (op.kind in integral_unary_ops):
             pass
         else:
             self.error(
@@ -305,6 +311,35 @@ class Parser:
             )
 
         return ast.UnaryOp(op.kind, expr, scope)
+
+    def address(self, scope: Scope):
+        token = self.advance()
+        identifier = self.identifier(scope)
+
+        if not isinstance(identifier, ast.Variable):
+            raise NotImplementedError(
+                "Address operator is only implemented for variables"  # TODO
+            )
+
+        var_state = scope.var_state(identifier.name)
+        if not var_state.mutable:
+            self.error(
+                token.offset,
+                "Cannot take address of immutable variable and"
+                f' "{identifier.name}" isn\'t mutable.',
+            )
+
+        return ast.Address(identifier, scope)
+
+    def dereference(self, scope: Scope):
+        token = self.advance()
+        expr = self.expr(scope, len(expr_precedences))
+        if not isinstance(expr.type, Pointer):
+            self.error(
+                token.offset, f"Expected pointer for dereferencing but got {expr.type}"
+            )
+
+        return ast.Dereference(expr, scope)
 
     def group(self, scope: Scope):
         self.advance()
@@ -341,19 +376,23 @@ class Parser:
         return ast.WhileExpr(cond, body, scope)
 
     def assignment(self, op: Token, left: ast.Expr, scope: Scope):
-        if not isinstance(left, ast.Variable):
+        if isinstance(left, ast.Variable):
+            var_state = scope.var_state(left.name)
+            if not var_state:
+                raise ValueError(
+                    "Unreachable: should have been caught while parsing variable"
+                )
+            if not var_state.mutable:
+                self.error(
+                    op.offset, f"Cannot assign to immutable variable {left.name}"
+                )
+        # Left should be variable or dereference
+        elif not isinstance(left, ast.Dereference):
             self.sync_error(
-                op.offset, "Left side of assignment should be an identifier."
+                op.offset,
+                f"Expected variable or dereference on left side of assignment."
+                f" Can't assign to {left}.",
             )
-
-        var_state = scope.var_state(left.name)
-
-        if not var_state:
-            raise ValueError(
-                "Unreachable: should have been caught while parsing variable"
-            )
-        if not var_state.mutable:
-            self.error(op.offset, f"Cannot assign to immutable variable {left.name}")
 
         right = self.expr(scope, expr_precedences[op.kind])
         return ast.BinaryOp(op.kind, left, right, scope)
@@ -361,15 +400,15 @@ class Parser:
     def cast(self, op: Token, expr: ast.Expr, scope: Scope):
         typ = self.type()
 
-        if not issubclass(expr.type, NumericalType):
+        if not isinstance(expr.type, numerical_types):
             self.error(
                 op.offset, "Casting is only supported for numerical primitive types."
             )
 
-        if not issubclass(typ, NumericalType):
+        if not isinstance(expr.type, numerical_types):
             self.error(op.offset, "Casting to non numerical type.")
 
-        if typ == expr.type:
+        if type(typ) is type(expr.type):
             self.error(op.offset, "Pointless casting to the same type.")
 
         return ast.Cast(expr, scope, typ)
@@ -387,16 +426,16 @@ class Parser:
 
         # After excluding assignment and cast,
         # we should be left with operands of same type
-        if left.type != right.type:
+        if type(left.type) is not type(right.type):
             self.error(
                 op.offset,
                 f"Left({left.type}) and right({right.type})"
                 " side of operation don't have the same type.",
             )
 
-        if (left.type in numerical_types) and (op.kind in numerical_bin_ops):
+        if isinstance(left.type, numerical_types) and (op.kind in numerical_bin_ops):
             pass
-        elif (left.type in integral_types) and (op.kind in integral_bin_ops):
+        elif isinstance(left.type, integral_types) and (op.kind in integral_bin_ops):
             pass
         else:
             self.error(
@@ -447,8 +486,8 @@ class Parser:
             self.sync_error(
                 token.offset, "Expected type annotation for uninitialized type"
             )
-        elif (annotated_type is not None and annotated_type != typ) or (
-            expr_type is not None and expr_type != typ
+        elif (annotated_type is not None and type(annotated_type) is not type(typ)) or (
+            expr_type is not None and type(expr_type) is not type(typ)
         ):
             self.error(
                 token.offset,
@@ -497,7 +536,7 @@ class Parser:
         match token.kind:
             case TokenKind.PUTCHAR:
                 stmt = self.simple_statement(scope)
-                if stmt.expr.type != I32:
+                if not isinstance(stmt.expr.type, I32):
                     self.error(token.offset, "Putchar only accepts 32 bit integers.")
             case TokenKind.RETURN:
                 stmt = self.simple_statement(scope)
@@ -581,7 +620,7 @@ class Parser:
         main = self.definitions.get("main")
         if main is None or main.kind != ast.DefinitionKind.FUNC:
             self.error(0, "Program doesn't have a main function")
-        elif main.body.type != I32:
+        elif not isinstance(main.body.type, I32):
             self.error(main.src_offset, "Main function has to return i32.")
 
         return ast.Program(self.definitions, scope)
@@ -593,6 +632,8 @@ class Parser:
         TokenKind.LEFT_BRACE: block,
         TokenKind.MINUS: unary_op,
         TokenKind.BANG: unary_op,
+        TokenKind.AMPERSAND: address,
+        TokenKind.ASTERISK: dereference,
         TokenKind.IDENTIFIER: identifier,
         TokenKind.IF: if_expr,
         TokenKind.WHILE: while_expr,

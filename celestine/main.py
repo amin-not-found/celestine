@@ -7,7 +7,7 @@ from argparse import ArgumentParser, Namespace
 
 from parse import Parser
 from lexer import Lexer
-from gen import QBE
+from qbe import QBE
 
 DEBUG = True
 

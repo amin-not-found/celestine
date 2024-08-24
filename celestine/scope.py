@@ -1,13 +1,7 @@
-from abc import ABCMeta, abstractmethod
 from enum import Enum, auto
 from typing import Optional, NamedTuple
 
-
-class BaseType(metaclass=ABCMeta):
-    @property
-    @staticmethod
-    @abstractmethod
-    def size() -> int: ...
+from types_info import BaseType
 
 
 class IncrementalGen:

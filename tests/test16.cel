@@ -1,0 +1,11 @@
+function main(): i32 = {
+    let mut x = 50;
+    putchar x;
+    let y = &x;
+    x = 49;
+    putchar *y;
+    *y = 48;
+    putchar x;
+    putchar 10;
+    return 0;
+}

@@ -21,7 +21,7 @@ function main(): i32 = {
 ```
 
 ## Dependencies
-- [QBE](https://c9x.me/compile/)
+- [QBE 1.2](https://c9x.me/compile/)
 - Python (tested with 3.11)
 - A compiler for GAS style assembly (tested with GCC)
 

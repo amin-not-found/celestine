@@ -6,7 +6,7 @@ from enum import Enum, auto
 from lexer import TokenKind
 from scope import Scope, BaseType
 from gen import GenBackend, GenResult, IfArm, BlockIR
-from type import PrimitiveType, NumericalType, I32, F32
+from types_info import PrimitiveType, NumericalType, I32, F32, Pointer
 
 
 class AST(metaclass=ABCMeta):
@@ -54,11 +54,11 @@ class Literal(AST, metaclass=ABCMeta):
 
 
 class IntLiteral(Literal):
-    type = I32
+    type = I32()
 
 
 class FloatLiteral(Literal):
-    type = F32
+    type = F32()
 
 
 @dataclass
@@ -72,6 +72,37 @@ class Variable(AST):
 
     def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.var(self.scope, self.name, self.type)
+
+
+@dataclass
+class Address(AST):
+    expr: "Variable"
+    scope: Scope
+
+    def __post_init__(self):
+        self.type: Type[BaseType] = Pointer(self.expr.type)
+
+    def __repr__(self) -> str:
+        return f"Address(expr={self.expr})"
+
+    def to_ir(self, gen: GenBackend) -> GenResult:
+        return gen.address(self.scope, self.expr.name)
+
+
+@dataclass
+class Dereference(AST):
+    expr: "Expr"
+    scope: Scope
+
+    def __post_init__(self):
+        assert isinstance(self.expr.type, Pointer)
+        self.type: Type[BaseType] = self.expr.type.contained_type
+
+    def __repr__(self) -> str:
+        return f"Dereference(expr={self.expr})"
+
+    def to_ir(self, gen: GenBackend) -> GenResult:
+        return gen.dereference(self.scope, self.type, self.expr.to_ir(gen))
 
 
 @dataclass
@@ -108,11 +139,13 @@ class UnaryOp(AST):
 @dataclass
 class BinaryOp(AST):
     op: TokenKind
-    left: "Expr"
+    left: Variable | Dereference
     right: "Expr"
     scope: Scope
 
     def __post_init__(self):
+        if self.op == TokenKind.ASSIGNMENT:
+            assert isinstance(self.left, (Variable, Dereference))
         self.type: Type[PrimitiveType] = self.right.type
 
     def __repr__(self):
@@ -121,8 +154,11 @@ class BinaryOp(AST):
     def to_ir(self, gen: GenBackend) -> GenResult:
         right = self.right.to_ir(gen)
         match self.op:
-            case TokenKind.ASSIGNMENT:
-                return gen.assignment(self.scope, self.left.name, self.type, right)
+            case TokenKind.ASSIGNMENT if isinstance(self.left, Variable):
+                return gen.var_assignment(self.scope, self.left.name, self.type, right)
+            case TokenKind.ASSIGNMENT if isinstance(self.left, Dereference):
+                ref = self.left.expr.to_ir(gen)
+                return gen.deref_assignment(self.scope, ref, self.type, right)
             case TokenKind.L_AND | TokenKind.L_OR:
                 return gen.logical_connective(
                     self.scope, self.op, self.left.to_ir(gen), right, self.type
@@ -139,7 +175,7 @@ class IfExpr(AST):
     scope: Scope
 
     def __post_init__(self):
-        self.type = I32
+        self.type = I32()
 
     def __repr__(self) -> str:
         res = [""]
@@ -246,7 +282,7 @@ class Block(AST):
     scope: Scope
 
     def __post_init__(self):
-        self.type = I32
+        self.type = I32()
         self.start = self.scope.label()
         self.end = self.scope.label()
 

@@ -4,14 +4,14 @@ tests/test11.cel:6:12: Error: Declaration of existing variable 'a'.
 tests/test11.cel:7:15: Error: Expected type annotation for uninitialized type
 tests/test11.cel:8:17: Error: Assigned value doesn't have the same type as annotation
 tests/test11.cel:9:12: Error: Unknown type i33.
-tests/test11.cel:10:8: Error: Left side of assignment should be an identifier.
+tests/test11.cel:10:8: Error: Expected variable or dereference on left side of assignment. Can't assign to IntLiteral(4).
 tests/test11.cel:11:13: Error: Expected a type identifier.
 tests/test11.cel:12:5: Error: Undefined identifier 'f'.
 tests/test11.cel:13:16: Error: Initialized immutable variable g
-tests/test11.cel:14:15: Error: Operator BANG is not supported by <class 'type.F32'>
+tests/test11.cel:14:15: Error: Operator BANG is not supported by f32
 tests/test11.cel:15:15: Error: Pointless casting to the same type.
-tests/test11.cel:16:19: Error: Left(<class 'type.F32'>) and right(<class 'type.I32'>) side of operation don't have the same type.
-tests/test11.cel:16:19: Error: Operator PERCENT isn't supported for <class 'type.F32'>
+tests/test11.cel:16:19: Error: Left(f32) and right(i32) side of operation don't have the same type.
+tests/test11.cel:16:19: Error: Operator PERCENT isn't supported for f32
 tests/test11.cel:16:24: Error: Pointless casting to the same type.
 tests/test11.cel:17:13: Error: Undefined identifier 'n'.
 tests/test11.cel:18:5: Error: Putchar only accepts 32 bit integers.
