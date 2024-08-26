@@ -1,0 +1,11 @@
+function double(number: &i32): i32 = {
+    *number = *number * 2;
+}
+
+function main(): i32 = {
+    let mut a: i32 = 24;
+    double(&a);
+    putchar a; // 24 * = 48 ='0'
+    putchar 10;
+    return 0;
+}

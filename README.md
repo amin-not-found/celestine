@@ -64,6 +64,8 @@ You can do these operations in an expression:
 |-------------|-----------------------------------------|----------
 |`-`          | Negative number                         | 1
 |`!`          | Logical not                             | 1
+|`&`          | Address(get pointer)                    | 1
+|`*`          | Dereference operator                    | 1
 |`as`         | Type casting between numbers            | 2
 |`*`, `/`, `%`| Multiplication, division, and remainder | 3
 |`+`, `-`     | Addition and subtraction                | 4
@@ -149,9 +151,28 @@ putchar c as i32 + 48;
 // prints '6' as c truncates to 6 in conversion and 48 is ascii code fore 0
 ```
 
+##### Pointers
+Pointers are data types that hold the address to some data on memory. You can get the address for a variable using `&` operator. Pointer types are also described with a `&` prefix e.g. a pointer to a 32 bit integer has a type of `&i32`.
+You can dereference pointer to access value at their address or modify it using `*` unary operator with the pointer. Look at this example to see pointers in action:
+```ts
+function double(number: &i32): i32 = {
+    // Set value of address that number points at to twice itself
+    *number = *number * 2;
+}
+
+function main(): i32 = {
+    let mut a: i32 = 24;
+    // give address of variable a to double function
+    double(&a);
+    putchar a; // 24 * = 48 ='0'
+    putchar 10;
+    return 0;
+}
+```
+
 ### Functions
 Function definition syntax is as:
-```
+```rust
 function name(arg1: type,...): return_type = {
     // body
 }
