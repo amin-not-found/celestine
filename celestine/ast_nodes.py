@@ -1,16 +1,19 @@
+from __future__ import annotations
 from abc import abstractmethod, ABCMeta
 from dataclasses import dataclass
-from typing import NamedTuple, Type
+from typing import NamedTuple, TYPE_CHECKING
 from enum import Enum, auto
 
 from lexer import TokenKind
-from scope import Scope, BaseType
 from gen import GenBackend, GenResult, IfArm, BlockIR
-from types_info import PrimitiveType, NumericalType, I32, F32, Pointer
+from types_info import BaseType, PrimitiveType, NumericalType, I32, I64, F32, Pointer
+
+if TYPE_CHECKING:
+    from scope import Scope
 
 
 class AST(metaclass=ABCMeta):
-    type: Type[BaseType] | None = None
+    type: type[BaseType] | None = None
 
     @abstractmethod
     def __repr__(self) -> str: ...
@@ -44,7 +47,7 @@ class Literal(AST, metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def type(self) -> Type[PrimitiveType]: ...
+    def type(self) -> type[PrimitiveType]: ...
 
     def to_ir(self, gen: GenBackend) -> GenResult:
         return gen.literal(self.scope, self.type, self.lexeme)
@@ -65,7 +68,7 @@ class FloatLiteral(Literal):
 class Variable(AST):
     name: str
     scope: Scope
-    type: Type[BaseType]
+    type: type[BaseType]
 
     def __repr__(self) -> str:
         return f"Variable(name={self.name})"
@@ -76,11 +79,11 @@ class Variable(AST):
 
 @dataclass
 class Address(AST):
-    expr: "Variable"
+    expr: Variable
     scope: Scope
 
     def __post_init__(self):
-        self.type: Type[BaseType] = Pointer(self.expr.type)
+        self.type: type[BaseType] = Pointer(self.expr.type)
 
     def __repr__(self) -> str:
         return f"Address(expr={self.expr})"
@@ -91,12 +94,13 @@ class Address(AST):
 
 @dataclass
 class Dereference(AST):
-    expr: "Expr"
+    expr: Expr
     scope: Scope
 
     def __post_init__(self):
-        assert isinstance(self.expr.type, Pointer)
-        self.type: Type[BaseType] = self.expr.type.contained_type
+        if not isinstance(self.expr.type, (Pointer, I64)):
+            raise ValueError("Should be unreachable after parser error checking")
+        self.type: type[BaseType] = self.expr.type.contained_type
 
     def __repr__(self) -> str:
         return f"Dereference(expr={self.expr})"
@@ -107,9 +111,9 @@ class Dereference(AST):
 
 @dataclass
 class Cast(AST):
-    expr: "Expr"
+    expr: Expr
     scope: Scope
-    type: Type[NumericalType]
+    type: type[NumericalType]
 
     def __repr__(self) -> str:
         return f"Cast(expr={self.expr}, to={self.type})"
@@ -122,11 +126,11 @@ class Cast(AST):
 @dataclass
 class UnaryOp(AST):
     op: TokenKind
-    expr: "Expr"
+    expr: Expr
     scope: Scope
 
     def __post_init__(self):
-        self.type: Type[PrimitiveType] = self.expr.type
+        self.type: type[PrimitiveType] = self.expr.type
 
     def __repr__(self) -> str:
         return f"UnaryOp(op={self.op}, expr={self.expr})"
@@ -139,14 +143,16 @@ class UnaryOp(AST):
 @dataclass
 class BinaryOp(AST):
     op: TokenKind
-    left: Variable | Dereference
-    right: "Expr"
+    left: Expr
+    right: Expr
     scope: Scope
 
     def __post_init__(self):
-        if self.op == TokenKind.ASSIGNMENT:
-            assert isinstance(self.left, (Variable, Dereference))
-        self.type: Type[PrimitiveType] = self.right.type
+        if self.op == TokenKind.ASSIGNMENT and not isinstance(
+            self.left, (Variable, Dereference)
+        ):
+            raise ValueError("Should be unreachable after parser error checking")
+        self.type: type[PrimitiveType] = self.right.type
 
     def __repr__(self):
         return f"BinaryOp(op={self.op}, left={self.left}, right={self.right})"
@@ -158,10 +164,10 @@ class BinaryOp(AST):
                 return gen.var_assignment(self.scope, self.left.name, self.type, right)
             case TokenKind.ASSIGNMENT if isinstance(self.left, Dereference):
                 ref = self.left.expr.to_ir(gen)
-                return gen.deref_assignment(self.scope, ref, self.type, right)
+                return gen.deref_assignment(ref, self.type, right)
             case TokenKind.L_AND | TokenKind.L_OR:
                 return gen.logical_connective(
-                    self.scope, self.op, self.left.to_ir(gen), right, self.type
+                    self.scope, self.op, self.left.to_ir(gen), right
                 )
             case _:
                 return gen.binary_op(
@@ -171,16 +177,14 @@ class BinaryOp(AST):
 
 @dataclass
 class IfExpr(AST):
-    arms: list[tuple["Expr", "Block"]]
+    arms: list[tuple[Expr, Block]]
     scope: Scope
 
     def __post_init__(self):
         self.type = I32()
 
     def __repr__(self) -> str:
-        res = [""]
-        for arm in self.arms:
-            res.append(f"({arm[0]}, {arm[1]})")
+        res = [f"({arm[0]}, {arm[1]})" for arm in self.arms]
         res = "\n        ".join(res)
         return f"IfExpr({res})"
 
@@ -197,8 +201,8 @@ class IfExpr(AST):
 
 @dataclass
 class WhileExpr(AST):
-    cond: "Expr"
-    body: "Block"
+    cond: Expr
+    body: Block
     scope: Scope
 
     def __post_init__(self):
@@ -219,9 +223,9 @@ class WhileExpr(AST):
 @dataclass
 class FuncCall(AST):
     function_name: str
-    parameters: list["Expr"]
+    parameters: list[Expr]
     scope: Scope
-    type: Type[BaseType]
+    type: type[BaseType]
 
     def __repr__(self) -> str:
         args = ", ".join(map(str, self.parameters))
@@ -259,7 +263,7 @@ class SimpleStatement(AST):
 class VariableDeclare(AST):
     expr: Expr
     name: str
-    var_type: Type[BaseType]
+    var_type: type[BaseType]
     scope: Scope
 
     def __repr__(self) -> str:
@@ -290,7 +294,7 @@ class Block(AST):
         body = "\n  ".join(str(stmt) for stmt in self.body)
         return "Block(\n    " + body.replace("\n  ", "\n    ") + ")"
 
-    def to_ir(self, gen: GenBackend, gen_labels=True) -> GenResult:
+    def to_ir(self, gen: GenBackend, gen_labels: bool = True) -> GenResult:
         return gen.block(
             self.scope,
             self.start,
@@ -299,7 +303,7 @@ class Block(AST):
             gen_labels,
         )
 
-    def to_block_ir(self, gen: GenBackend, gen_labels=True) -> BlockIR:
+    def to_block_ir(self, gen: GenBackend, gen_labels: bool = True) -> BlockIR:
         return BlockIR(self.to_ir(gen, gen_labels), self.start, self.end)
 
 
@@ -309,7 +313,7 @@ class Function(AST):
     body: Block
     arguments: list[tuple[str, BaseType]]
     scope: Scope
-    type: Type[BaseType]
+    type: type[BaseType]
 
     def __repr__(self) -> str:
         args = ", ".join(f"{arg}={typ.__name__}" for arg, typ in self.arguments)

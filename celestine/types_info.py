@@ -1,4 +1,4 @@
-from typing import Type
+from __future__ import annotations
 from abc import ABCMeta, abstractmethod
 
 from types_abc import TypeABC, I32ABC, I64ABC, F32ABC, F64ABC
@@ -13,7 +13,7 @@ class BaseType(metaclass=ABCMeta):
     @property
     @staticmethod
     @abstractmethod
-    def abc_type() -> Type[TypeABC]: ...
+    def abc_type() -> type[TypeABC]: ...
 
 
 class PrimitiveType(BaseType, metaclass=ABCMeta):
@@ -62,10 +62,10 @@ class F64(NumericalType):
 
 class Pointer(PrimitiveType):
     size = 8
-    abc_type = I64
-    contained_type: Type[BaseType]
+    abc_type = I64ABC
+    contained_type: type[BaseType]
 
-    def __init__(self, contained_type: Type[BaseType]) -> None:
+    def __init__(self, contained_type: type[BaseType]) -> None:
         super().__init__()
         self.contained_type = contained_type
 

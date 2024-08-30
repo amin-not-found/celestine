@@ -1,7 +1,9 @@
-from typing import NamedTuple, TextIO, Optional
+from __future__ import annotations
+from typing import NamedTuple, TextIO
 
-from lexer import Lexer, TokenKind, Token, UnrecognizedToken
-from scope import BaseType, Scope, ScopeType, VariableRedeclareError
+from lexer import Lexer, TokenKind, Token, UnrecognizedTokenError
+from scope import Scope, ScopeType, VariableRedeclareError
+from types_info import BaseType
 import ast_nodes as ast
 from types_info import (
     PrimitiveType,
@@ -119,7 +121,7 @@ class Parser:
         self.lexer = lexer
         self.diagnostics: list[Diagnostic] = []
         self.definitions: ast.Definitions = dict()
-        self._last_token: Optional[Token] = None
+        self._last_token: Token | None = None
         self._peeked = False
 
     def advance(self) -> Token:
@@ -130,7 +132,7 @@ class Parser:
             try:
                 self._last_token = self.lexer.next()
                 return self._last_token
-            except UnrecognizedToken as err:
+            except UnrecognizedTokenError as err:  # noqa: PERF203
                 self.sync_error(
                     self.lexer.offset, f"Syntax Error: Unexpected '{err.text}'."
                 )
@@ -161,7 +163,7 @@ class Parser:
     def sync_error(self, offset: int, msg: str) -> None:
         self.error(offset, msg)
         self.synchronize()
-        raise ParseError()
+        raise ParseError
 
     def expect_token(self, kind: TokenKind):
         token = self.advance()
@@ -172,10 +174,10 @@ class Parser:
             )
         return token
 
-    def expr_precedence(self, token):
+    def expr_precedence(self, token: TokenKind):
         return expr_precedences.get(token.kind, 0)
 
-    def expr(self, scope: Scope, precedence=0):
+    def expr(self, scope: Scope, precedence: int = 0):
         """An implementation of a Pratt parser"""
 
         token = self.peek()
@@ -301,11 +303,14 @@ class Parser:
         op = self.advance()
         expr = self.expr(scope, len(expr_precedences))
 
-        if isinstance(expr.type, numerical_types) and (op.kind in numerical_unary_ops):
-            pass
-        elif isinstance(expr.type, integral_types) and (op.kind in integral_unary_ops):
-            pass
-        else:
+        legal_numerical_op = isinstance(expr.type, numerical_types) and (
+            op.kind in numerical_unary_ops
+        )
+        legal_integral_op = isinstance(expr.type, integral_types) and (
+            op.kind in integral_unary_ops
+        )
+
+        if not (legal_numerical_op or legal_integral_op):
             self.error(
                 op.offset, f"Operator {op.kind.name} is not supported by {expr.type}"
             )
@@ -425,19 +430,30 @@ class Parser:
         right = self.expr(scope, expr_precedences[op.kind])
 
         # After excluding assignment and cast,
-        # we should be left with operands of same type
-        if type(left.type) is not type(right.type):
+        # we should be left with operands of same type or pointers
+        if type(left.type) is type(right.type):  # noqa: SIM114
+            pass
+        elif isinstance(right.type, Pointer) and isinstance(left.type, (Pointer, I64)):
+            pass
+        elif isinstance(left.type, Pointer) and isinstance(right.type, (Pointer, I64)):
+            # Ensure right side has type of pointer for defining type of expr
+            left, right = right, left
+
+        else:
             self.error(
                 op.offset,
                 f"Left({left.type}) and right({right.type})"
                 " side of operation don't have the same type.",
             )
 
-        if isinstance(left.type, numerical_types) and (op.kind in numerical_bin_ops):
-            pass
-        elif isinstance(left.type, integral_types) and (op.kind in integral_bin_ops):
-            pass
-        else:
+        legal_numerical_op = isinstance(left.type, numerical_types) and (
+            op.kind in numerical_bin_ops
+        )
+        legal_integral_op = isinstance(left.type, integral_types) and (
+            op.kind in integral_bin_ops
+        )
+
+        if not (legal_numerical_op or legal_integral_op):
             self.error(
                 op.offset, f"Operator {op.kind.name} isn't supported for {left.type}"
             )

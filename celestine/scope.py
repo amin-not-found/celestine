@@ -1,7 +1,10 @@
+from __future__ import annotations
 from enum import Enum, auto
-from typing import Optional, NamedTuple
+from typing import NamedTuple, TYPE_CHECKING
 
-from types_info import BaseType
+
+if TYPE_CHECKING:
+    from types_info import BaseType
 
 
 class IncrementalGen:
@@ -35,7 +38,7 @@ class VariableRedeclareError(Exception):
 class Scope:
     _vars: dict[str, VariableState]
 
-    def __init__(self, kind: ScopeType, parent: Optional["Scope"] = None):
+    def __init__(self, kind: ScopeType, parent: Scope | None = None):
         if kind != ScopeType.GLOBAL and parent is None:
             raise RuntimeError("Non global scopes should have a parent")
 
@@ -63,23 +66,25 @@ class Scope:
         return self._vars.items()
 
     def temp(self) -> str:
-        assert (
-            self._kind != ScopeType.GLOBAL
-        ), "Global scope can't have temporaries \
-            and couldn't find any parent function scope"
+        if self._kind == ScopeType.GLOBAL:
+            raise AttributeError(
+                "Global scope can't have temporaries"
+                "and couldn't find any parent function scope"
+            )
 
-        if not self._kind == ScopeType.FUNC:
+        if self._kind != ScopeType.FUNC:
             return self._parent.temp()
 
         return self._temp_gen()
 
     def label(self) -> str:
-        assert (
-            self._kind != ScopeType.GLOBAL
-        ), "Global scope can't have block labels \
-            and couldn't find any parent function scope"
+        if self._kind == ScopeType.GLOBAL:
+            raise AttributeError(
+                "Global scope can't have block labels"
+                "and couldn't find any parent function scope"
+            )
 
-        if not self._kind == ScopeType.FUNC:
+        if self._kind != ScopeType.FUNC:
             return self._parent.label()
 
         return self._label_gen()
@@ -91,19 +96,19 @@ class Scope:
             case ScopeType.FUNC:
                 return self._var_gen()
             case ScopeType.BLOCK:
-                return self._parent._var()  # pylint: disable=protected-access
+                return self._parent._var()  # noqa: SLF001
             case _:
                 raise ValueError("Unreachable")
 
     def declare_var(self, name: str, typ: BaseType, mut: bool):
         if name in self._vars:
-            raise VariableRedeclareError()
+            raise VariableRedeclareError
         self._vars[name] = VariableState(mut, self._var(), self._kind, typ)
 
     def declare_arg(self, name: str, typ: BaseType, mut: bool):
         self._vars[name] = VariableState(mut, self._var(), ScopeType.FUNC_ARG, typ)
 
-    def var_state(self, name: str) -> Optional[VariableState]:
+    def var_state(self, name: str) -> VariableState | None:
         state = self._vars.get(name)
 
         if state is not None:

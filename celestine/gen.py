@@ -1,24 +1,27 @@
-from typing import NamedTuple
+from __future__ import annotations
+from typing import NamedTuple, TYPE_CHECKING
 from abc import abstractmethod, ABCMeta
 
-from lexer import TokenKind
-from scope import Scope
-from types_info import (
-    BaseType,
-    PrimitiveType,
-)
 
 from types_abc import ImmediateResult, NumericalABC, IntegerABC
+
+if TYPE_CHECKING:
+    from scope import Scope
+    from types_info import (
+        BaseType,
+        PrimitiveType,
+    )
+    from lexer import TokenKind
 
 
 class GenResult:
     @staticmethod
-    def singular(item: ImmediateResult, gen_backend: "GenBackend"):
+    def singular(item: ImmediateResult, gen_backend: GenBackend):
         res = GenResult(gen_backend)
         res.insert(0, [item])
         return res
 
-    def __init__(self, backend: "GenBackend") -> None:
+    def __init__(self, backend: GenBackend) -> None:
         self.backend = backend
         self._results: list[ImmediateResult] = []
 
@@ -47,11 +50,11 @@ class GenResult:
         for i, res in enumerate(results):
             self._results.insert(index + i, res)
 
-    def concat(self, other: "GenResult"):
+    def concat(self, other: GenResult):
         self.insert(len(self), other.results())
 
     def pop(self, index: int):
-        self._results.pop(index)
+        return self._results.pop(index)
 
 
 class BlockIR(NamedTuple):
@@ -65,17 +68,13 @@ class IfArm(NamedTuple):
     body: BlockIR
 
 
-def gen_method(func):
-    return staticmethod(abstractmethod(func))
-
-
 class GenBackend(metaclass=ABCMeta):
-    # pylint: disable=unused-argument
-
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def literal(scope: Scope, typ: PrimitiveType, value: str) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def unary_op(
         scope: Scope,
         op: TokenKind,
@@ -83,44 +82,50 @@ class GenBackend(metaclass=ABCMeta):
         expr: GenResult,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def address(
         scope: Scope,
         var: str,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def dereference(
         scope: Scope,
         typ: PrimitiveType,
         expr: GenResult,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def var_assignment(
         scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def deref_assignment(
-        scope: Scope, ref: GenResult, typ: PrimitiveType, expr: GenResult
+        ref: GenResult, typ: PrimitiveType, expr: GenResult
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def cast(
         scope: Scope, expr: GenResult, from_: NumericalABC, to: NumericalABC
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def logical_connective(
         scope: Scope,
         op: TokenKind,
         left: GenResult,
         right: GenResult,
-        typ: PrimitiveType,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def binary_op(
         scope: Scope,
         op: TokenKind,
@@ -129,16 +134,20 @@ class GenBackend(metaclass=ABCMeta):
         right: GenResult,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def if_expr(scope: Scope, arms: list[IfArm]) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def while_expr(scope: Scope, cond: GenResult, body: BlockIR) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def var(scope: Scope, name: str, typ: PrimitiveType) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def func_call(
         scope: Scope,
         name: str,
@@ -146,18 +155,22 @@ class GenBackend(metaclass=ABCMeta):
         typ: PrimitiveType,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def putchar(expr: GenResult, typ: IntegerABC) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def return_stmt(expr: GenResult) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def var_declare(
         scope: Scope, name: str, typ: PrimitiveType, expr: GenResult
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def block(
         scope: Scope,
         start_label: str,
@@ -166,7 +179,8 @@ class GenBackend(metaclass=ABCMeta):
         gen_labels: bool,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def function(
         scope: Scope,
         name: str,
@@ -175,5 +189,6 @@ class GenBackend(metaclass=ABCMeta):
         return_type: BaseType,
     ) -> GenResult: ...
 
-    @gen_method
+    @staticmethod
+    @abstractmethod
     def program(scope: Scope, functions: list[GenResult]) -> GenResult: ...

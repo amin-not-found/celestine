@@ -1,0 +1,11 @@
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "DOC", "D", "T20", "COM", "EM", "TRY", "INP", "FBT", "ERA", "ISC", "I", "FIX", "TD",
+    # annotating return types make linter lie about them blindly
+    "ANN2",
+    "PTH123",
+    "RUF012",
+    "S603", "S607",
+    "C408" # I think using {} for dict can cause ambiguity
+]

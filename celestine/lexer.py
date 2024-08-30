@@ -1,7 +1,10 @@
-from typing import TextIO, NamedTuple
+from __future__ import annotations
+from typing import TextIO, NamedTuple, TYPE_CHECKING
 from collections.abc import Iterator
 from enum import Enum, auto
-from os import PathLike
+
+if TYPE_CHECKING:
+    from os import PathLike
 
 
 class TokenKind(Enum):
@@ -57,7 +60,7 @@ class Token(NamedTuple):
     lexeme: str
 
 
-class UnrecognizedToken(Exception):
+class UnrecognizedTokenError(Exception):
     def __init__(self, text: str, *args: object) -> None:
         self.text = text
         super().__init__(*args)
@@ -78,6 +81,7 @@ class Lexer(Iterator):
         "*": TokenKind.ASTERISK,
         "/": TokenKind.SLASH,
         "%": TokenKind.PERCENT,
+        "@": TokenKind.AT_SIGN,
         "!": TokenKind.BANG,
         "&": TokenKind.AMPERSAND,
         "|": TokenKind.V_BAR,
@@ -119,12 +123,12 @@ class Lexer(Iterator):
         self._text = text
         self._peeked = False
         self._peeked_token = None
-        assert self._text.seekable()
+        if not self._text.seekable():
+            raise ValueError("Expected seekable text input")
 
     @staticmethod
     def lex_file(path: PathLike):
-        # pylint: disable=consider-using-with
-        file = open(path, encoding="UTF-8", newline="")
+        file = open(path, encoding="UTF-8", newline="")  # noqa: SIM115
         return Lexer(file)
 
     def __iter__(self):
@@ -148,11 +152,11 @@ class Lexer(Iterator):
 
         # handle two or more character tokens
         two_char_candids = self.two_char_tokens.get(kind)
-        if two_char_candids is not None:
-            new_kind = two_char_candids.get(self._peek_char())
-            if new_kind is not None:
-                kind = new_kind
-                self._forward_char()
+        if (two_char_candids is not None) and (
+            (new_kind := two_char_candids.get(self._peek_char())) is not None
+        ):
+            kind = new_kind
+            self._forward_char()
 
         if kind == TokenKind.COMMENT:
             # A line comment
@@ -167,7 +171,7 @@ class Lexer(Iterator):
             if char.isalpha() or char == "_":
                 return self.parse_id()
             self._forward_char()
-            raise UnrecognizedToken(char)
+            raise UnrecognizedTokenError(char)
 
         return Token(kind, self._position, char)
 
